@@ -11,21 +11,22 @@
    */
 
   import type { PageData } from './$types.js';
+  import type { PublicKWTQuestion } from '$lib/types.js';
   import { goto } from '$app/navigation';
   import { t } from '$lib/i18n.svelte.js';
+  import { CheckFat } from 'phosphor-svelte';
 
   let { data } = $props<{ data: PageData }>();
 
   const GAP = '______';
 
   /** Maps question id → typed answer string. */
-  let answers = $state<Record<number, string>>({});
-
+  let answers      = $state<Record<number, string>>({});
   let isSubmitting = $state(false);
   let errorMessage = $state('');
 
   const unanswered = $derived(
-    set.questions.filter((q) => !answers[q.id]?.trim()).length
+    data.set.questions.filter((q: PublicKWTQuestion) => !answers[q.id]?.trim()).length
   );
 
   /**
@@ -39,21 +40,26 @@
     return [s.slice(0, idx), s.slice(idx + GAP.length)];
   }
 
+  /** Submits all answers and redirects to the result page. */
   async function submit() {
     isSubmitting = true;
     errorMessage = '';
     try {
-      const res = await fetch(`/api/sets/${set.slug}/submit`, {
+      const res = await fetch(`/api/sets/${data.set.slug}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          answers: set.questions.map((q) => ({
+          answers: data.set.questions.map((q: PublicKWTQuestion) => ({
             questionId: q.id,
             given: answers[q.id]?.trim() ?? '',
           })),
         }),
       });
-      if (!res.ok) { const { error } = await res.json(); throw new Error(error ?? 'Submission failed.'); }
+      if (!res.ok) {
+        const body = await res.json();
+        errorMessage = body.error ?? 'Submission failed.';
+        return;
+      }
       const { attemptSlug } = await res.json();
       goto(`/result/${attemptSlug}`);
     } catch (err) {
@@ -64,22 +70,22 @@
   }
 </script>
 
-<svelte:head><title>{set.title} — WorksheetApp</title></svelte:head>
+<svelte:head><title>{data.set.title} — WorksheetApp</title></svelte:head>
 
 <div class="set-page">
   <div class="set-header">
-    <h1>{set.title}</h1>
-    <p class="q-count">{t('set.questions', { n: set.questions.length })}</p>
-    <p class="instructions">
-      {#if set.questions[0]}
-        {t('set.maxWords', { n: set.questions[0].maxWords })} — {t('set.keyword')} wymagany w odpowiedzi.
-      {/if}
-    </p>
+    <h1>{data.set.title}</h1>
+    <p class="q-count">{t('set.questions', { n: data.set.questions.length })}</p>
+    {#if data.set.questions[0]}
+      <p class="instructions">
+        {t('set.maxWords', { n: data.set.questions[0].maxWords })} — {t('set.keyword')} wymagany w odpowiedzi.
+      </p>
+    {/if}
   </div>
 
-  <form onsubmit={(e) => { e.preventDefault(); submit(); }}>
+  <form onsubmit={async (e) => { e.preventDefault(); await submit(); }}>
     <div class="questions">
-      {#each set.questions as q (q.id)}
+      {#each data.set.questions as q (q.id)}
         {@const [before, after] = splitGap(q.sentence2WithGap)}
         {@const filled = !!answers[q.id]?.trim()}
 
@@ -90,10 +96,8 @@
             <span class="max-words">{t('set.maxWords', { n: q.maxWords })}</span>
           </div>
 
-          <!-- Sentence 1: original -->
           <p class="sentence1">{q.sentence1}</p>
 
-          <!-- Sentence 2: gapped, with inline input -->
           <div class="sentence2-wrap">
             <span class="s2-label">{t('set.sentence2label')}</span>
             <span class="sentence2">
@@ -122,7 +126,7 @@
         {#if isSubmitting}
           <span class="spinner"></span> {t('set.submitting')}
         {:else}
-          {t('set.submit')}
+          <CheckFat size={18} weight="regular" /> {t('set.submit')}
         {/if}
       </button>
     </div>
@@ -130,56 +134,84 @@
 </div>
 
 <style>
-  .set-page { display: flex; flex-direction: column; gap: 1.5rem; }
+  .set-page { display: flex; flex-direction: column; gap: var(--space-6); }
 
-  .set-header { border-bottom: 2px solid #e9ecef; padding-bottom: 1rem; }
-  h1 { font-size: 1.75rem; font-weight: 800; }
-  .q-count { color: #868e96; margin-top: 0.2rem; }
-  .instructions { color: #4361ee; font-size: 0.88rem; margin-top: 0.3rem; font-weight: 500; }
+  .set-header {
+    border-bottom:  2px solid var(--color-border-subtle);
+    padding-bottom: var(--space-4);
+  }
+  h1           { font-size: var(--font-size-3xl); font-weight: var(--font-weight-extrabold); }
+  .q-count     { color: var(--color-text-muted); margin-top: var(--space-1); }
+  .instructions { color: var(--color-primary); font-size: var(--font-size-sm); margin-top: var(--space-2); font-weight: var(--font-weight-medium); }
 
-  .questions { display: flex; flex-direction: column; gap: 1rem; }
+  .questions { display: flex; flex-direction: column; gap: var(--space-4); }
 
-  .q-card { border: 2px solid transparent; transition: border-color 0.2s; display: flex; flex-direction: column; gap: 0.75rem; }
+  .q-card {
+    border:         2px solid transparent;
+    transition:     border-color var(--transition-base);
+    display:        flex;
+    flex-direction: column;
+    gap:            var(--space-3);
+  }
   .q-card.filled { border-color: #c3fae8; }
 
-  .q-meta { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-  .q-pos { font-weight: 800; color: #4361ee; font-size: 1.05rem; }
-  .keyword { background: #fff3bf; color: #5c4a00; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
-  .keyword strong { font-size: 1rem; letter-spacing: 0.05em; }
-  .max-words { color: #868e96; font-size: 0.82rem; margin-left: auto; }
+  .q-meta    { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+  .q-pos     { font-weight: var(--font-weight-extrabold); color: var(--color-primary); font-size: var(--font-size-md); }
+  .keyword   { background: var(--color-warning-light); color: var(--color-warning-dark); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--font-size-xs); }
+  .keyword strong { font-size: var(--font-size-sm); letter-spacing: var(--letter-spacing-wide); }
+  .max-words { color: var(--color-text-muted); font-size: var(--font-size-xs); margin-left: auto; }
 
-  .sentence1 { color: #495057; font-size: 1rem; line-height: 1.6; font-style: italic; }
+  .sentence1 { color: var(--color-neutral-700); font-size: var(--font-size-base); line-height: var(--line-height-base); font-style: italic; }
 
-  .sentence2-wrap { display: flex; flex-direction: column; gap: 0.3rem; }
-  .s2-label { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #868e96; }
-
+  .sentence2-wrap { display: flex; flex-direction: column; gap: var(--space-1); }
+  .s2-label {
+    font-size:      var(--font-size-xs);
+    font-weight:    var(--font-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-wide);
+    color:          var(--color-text-muted);
+  }
   .sentence2 {
-    font-size: 1rem;
-    line-height: 1.8;
-    color: #1a1a2e;
-    display: inline;
+    font-size:   var(--font-size-base);
+    line-height: var(--line-height-loose);
+    color:       var(--color-text);
+    display:     inline;
   }
 
   .gap-input {
-    display: inline-block;
-    border: none;
-    border-bottom: 2px solid #4361ee;
-    background: #edf2ff;
-    border-radius: 4px 4px 0 0;
-    padding: 0.15rem 0.5rem;
-    font-size: 1rem;
-    font-family: inherit;
-    color: #1a1a2e;
-    outline: none;
-    min-width: 180px;
-    width: 200px;
-    transition: border-color 0.15s, background 0.15s;
+    display:        inline-block;
+    border:         none;
+    border-bottom:  2px solid var(--color-primary);
+    background:     var(--color-primary-light);
+    border-radius:  var(--radius-sm) var(--radius-sm) 0 0;
+    padding:        var(--space-1) var(--space-2);
+    font-size:      var(--font-size-base);
+    font-family:    inherit;
+    color:          var(--color-text);
+    outline:        none;
+    min-width:      180px;
+    width:          200px;
+    transition:     border-color var(--transition-base), background var(--transition-base);
     vertical-align: baseline;
   }
-  .gap-input:focus { border-color: #2f4dd4; background: #dbe4ff; }
-  .gap-input::placeholder { color: #adb5bd; font-style: italic; font-size: 0.88rem; }
+  .gap-input:focus        { border-color: var(--color-primary-hover); background: var(--color-primary-muted); }
+  .gap-input::placeholder { color: var(--color-text-faint); font-style: italic; font-size: var(--font-size-sm); }
 
-  .submit-bar { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; flex-wrap: wrap; padding-top: 0.5rem; }
-  .hint { color: #e76f51; font-size: 0.9rem; }
-  .submit-btn { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 2rem; font-size: 1rem; font-weight: 600; }
+  .submit-bar {
+    display:         flex;
+    align-items:     center;
+    justify-content: flex-end;
+    gap:             var(--space-4);
+    flex-wrap:       wrap;
+    padding-top:     var(--space-2);
+  }
+  .hint       { color: var(--color-warning); font-size: var(--font-size-sm); }
+  .submit-btn {
+    display:     flex;
+    align-items: center;
+    gap:         var(--space-2);
+    padding:     var(--space-3) var(--space-8);
+    font-size:   var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+  }
 </style>
