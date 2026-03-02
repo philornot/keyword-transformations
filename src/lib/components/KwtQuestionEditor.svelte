@@ -47,22 +47,31 @@
     function onGapInput(e: Event) {
         const el = e.currentTarget as HTMLTextAreaElement;
         const raw = el.value;
+        const cursorBefore = raw.slice(0, el.selectionStart ?? 0);
 
-        // Count canonical gaps BEFORE the cursor to restore position correctly.
-        const before = raw.slice(0, el.selectionStart ?? 0);
-        const normalised = raw.replace(/_+/g, GAP);
+        /**
+         * Replace strategy based on match length:
+         *   length === 1   → user just typed a single `_`  → expand to canonical gap
+         *   length 2–5     → user backspaced into the gap  → remove it entirely
+         *   length >= 6    → canonical or pasted block     → normalise to canonical gap
+         */
+        const normalised = raw.replace(/_+/g, (match) => {
+            if (match.length < 6) return match.length === 1 ? CANONICAL_GAP : '';
+            return CANONICAL_GAP;
+        });
 
         if (normalised === raw) {
-            // Nothing changed — avoid unnecessary value reassignment.
             question.sentence2WithGap = raw;
             return;
         }
 
         question.sentence2WithGap = normalised;
 
-        // Restore cursor: count how many gaps appear before the old cursor and
-        // place the caret at the end of the last affected gap.
-        const normBefore = before.replace(/_+/g, GAP);
+        const normBefore = cursorBefore.replace(/_+/g, (match) => {
+            if (match.length < 6) return match.length === 1 ? CANONICAL_GAP : '';
+            return CANONICAL_GAP;
+        });
+
         requestAnimationFrame(() => {
             el.selectionStart = el.selectionEnd = normBefore.length;
         });
