@@ -8,18 +8,20 @@ interface QuestionInput {
     sentence2WithGap: string;
     keyword: string;
     correctAnswer: string;
+    alternativeAnswers?: string[];
+    exampleWrongAnswers?: string[];
     maxWords: 3 | 4 | 5;
 }
 
 export const POST: RequestHandler = async ({request}) => {
-    let body: { title: string; questions: QuestionInput[] };
+    let body: { title: string; sourceLabel?: string; questions: QuestionInput[] };
     try {
         body = await request.json();
     } catch {
         throw error(400, 'Invalid JSON.');
     }
 
-    const {title, questions} = body;
+    const {title, sourceLabel, questions} = body;
 
     if (!title?.trim()) throw error(400, 'title is required.');
     if (!Array.isArray(questions) || questions.length === 0) {
@@ -38,18 +40,19 @@ export const POST: RequestHandler = async ({request}) => {
 
     db.transaction(() => {
         const setResult = db
-            .prepare('INSERT INTO sets (slug, title) VALUES (?, ?)')
-            .run(slug, title.trim());
+            .prepare('INSERT INTO sets (slug, title, source_label) VALUES (?, ?, ?)')
+            .run(slug, title.trim(), sourceLabel?.trim() || null);
         const setId = setResult.lastInsertRowid as number;
 
         const insertQuestion = db.prepare(`
             INSERT INTO questions
-            (set_id, position, sentence1, sentence2_with_gap, keyword, correct_answer, max_words)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (set_id, position, sentence1, sentence2_with_gap, keyword,
+             correct_answer, alternative_answers, example_wrong_answers, max_words)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const [i, q] of questions.entries()) {
-            insertQuestion.run(setId, i + 1, q.sentence1.trim(), q.sentence2WithGap.trim(), q.keyword.trim().toUpperCase(), q.correctAnswer.trim(), q.maxWords,);
+            insertQuestion.run(setId, i + 1, q.sentence1.trim(), q.sentence2WithGap.trim(), q.keyword.trim().toUpperCase(), q.correctAnswer.trim(), JSON.stringify((q.alternativeAnswers ?? []).map((a) => a.trim()).filter(Boolean)), JSON.stringify((q.exampleWrongAnswers ?? []).map((a) => a.trim()).filter(Boolean)), q.maxWords,);
         }
     })();
 

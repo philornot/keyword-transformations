@@ -4,8 +4,7 @@
 
 /**
  * A single KWT question as returned from the OCR/parse pipeline,
- * before it is saved to the database. The `correctAnswer` may be null
- * if the parser couldn't detect it — the user fills it in during review.
+ * before it is saved to the database.
  */
 export interface ParsedKWTQuestion {
     /** Full original sentence (the "stem"). */
@@ -14,8 +13,15 @@ export interface ParsedKWTQuestion {
     sentence2WithGap: string;
     /** The key word, written in uppercase. */
     keyword: string;
-    /** The phrase that fills the gap, including the keyword. Null until set by user. */
+    /** The primary correct answer. Null until set by user. */
     correctAnswer: string | null;
+    /** Additional accepted answers (e.g. contraction variants, CKE alternates). */
+    alternativeAnswers: string[];
+    /**
+     * Answers that are definitively wrong and used to generate specific
+     * feedback in the result view (e.g. CKE-published incorrect examples).
+     */
+    exampleWrongAnswers: string[];
     /** Maximum number of words allowed (typically 3, 4, or 5). */
     maxWords: 3 | 4 | 5;
 }
@@ -28,10 +34,12 @@ export interface KWTQuestion {
     sentence2WithGap: string;
     keyword: string;
     correctAnswer: string;
+    alternativeAnswers: string[];
+    exampleWrongAnswers: string[];
     maxWords: 3 | 4 | 5;
 }
 
-/** A question sent to the browser for test-taking (no correct answer). */
+/** A question sent to the browser for test-taking (no answers). */
 export interface PublicKWTQuestion {
     id: number;
     position: number;
@@ -46,7 +54,17 @@ export interface PublicSet {
     id: number;
     slug: string;
     title: string;
+    sourceLabel: string | null;
     questions: PublicKWTQuestion[];
+}
+
+/** Summary row used on the home page set listing. */
+export interface SetSummary {
+    slug: string;
+    title: string;
+    sourceLabel: string | null;
+    questionCount: number;
+    createdAt: string;
 }
 
 /** A single submitted answer from the test-taker. */
@@ -64,7 +82,10 @@ export interface AnswerResult {
     keyword: string;
     given: string | null;
     correctAnswer: string;
+    alternativeAnswers: string[];
     isCorrect: boolean;
+    /** True when `given` exactly matches one of the teacher-supplied wrong examples. */
+    isKnownWrongAnswer: boolean;
 }
 
 /** Full attempt result returned after grading. */

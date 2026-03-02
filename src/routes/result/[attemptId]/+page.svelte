@@ -5,12 +5,11 @@
 
     import type {PageData} from './$types.js';
     import {t} from '$lib/i18n.svelte.js';
-    import {ArrowClockwise, ArrowLeft, CheckFat, MedalMilitary, Trophy, XSquare} from 'phosphor-svelte';
+    import {ArrowClockwise, ArrowLeft, CheckFat, MedalMilitary, Trophy, WarningCircle, XSquare} from 'phosphor-svelte';
 
     let {data} = $props<{ data: PageData }>();
 
     const result = $derived(data.result);
-
     const GAP = '______';
 
     const scoreColor = $derived(
@@ -46,6 +45,7 @@
 </svelte:head>
 
 <div class="result-page">
+
     <!-- Score summary -->
     <div class="score-card card">
         <div class="score-title">
@@ -93,6 +93,11 @@
             {/if}
           </span>
                     <span class="kw-tag">{a.keyword}</span>
+                    {#if a.isKnownWrongAnswer}
+            <span class="known-wrong-badge">
+              <WarningCircle size={11} weight="bold"/> {t('result.knownWrongAnswer')}
+            </span>
+                    {/if}
                 </div>
 
                 <p class="s1">{a.sentence1}</p>
@@ -110,6 +115,17 @@
                         <span class="corr-label">{t('result.correct')}</span>
                         <span class="corr-value">{a.correctAnswer}</span>
                     </div>
+                    {#if a.alternativeAnswers.length > 0}
+                        <div class="also-accepted">
+                            <span class="corr-label">{t('result.alsoAccepted')}</span>
+                            <span class="alt-list">
+                {#each a.alternativeAnswers as alt, i}
+                  <span class="alt-chip">{alt}</span>
+                    {#if i < a.alternativeAnswers.length - 1},{/if}
+                {/each}
+              </span>
+                        </div>
+                    {/if}
                 {/if}
             </div>
         {/each}
@@ -228,6 +244,7 @@
         display: flex;
         align-items: center;
         gap: var(--space-2);
+        flex-wrap: wrap;
     }
 
     .pos {
@@ -265,6 +282,18 @@
         letter-spacing: var(--letter-spacing-wide);
     }
 
+    .known-wrong-badge {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+        background: #fff0e0;
+        color: #c05500;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-bold);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-full);
+    }
+
     .s1 {
         color: var(--color-text-muted);
         font-style: italic;
@@ -294,7 +323,8 @@
         color: var(--color-danger-dark);
     }
 
-    .correction {
+    .correction,
+    .also-accepted {
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -313,6 +343,22 @@
     .corr-value {
         color: var(--color-success-dark);
         font-weight: var(--font-weight-bold);
+    }
+
+    .alt-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+        align-items: center;
+    }
+
+    .alt-chip {
+        background: var(--color-success-light);
+        color: var(--color-success-dark);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        padding: 2px var(--space-2);
+        border-radius: var(--radius-full);
     }
 
     /* ── Footer actions ───────────────────────────────────────────────── */

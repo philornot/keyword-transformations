@@ -7,12 +7,12 @@ import {nanoid} from 'nanoid';
 type SetRow = { id: number };
 
 /** Row type for the questions lookup query. */
-type QRow = { id: number; correct_answer: string };
+type QRow = { id: number; correct_answer: string; alternative_answers: string };
 
 /**
  * Maps contracted English forms to their expanded equivalents.
- * Used to normalise both stored answers and user input before comparison,
- * so "hadn't" and "had not" are treated as identical.
+ * Applied to both stored answers and user input before comparison so that
+ * "hadn't" and "had not" are treated as identical.
  */
 const CONTRACTIONS: Record<string, string> = {
     "aren't": 'are not',
@@ -62,7 +62,7 @@ const CONTRACTIONS: Record<string, string> = {
 };
 
 /**
- * Expands English contractions in a string to their full forms.
+ * Expands English contractions to their full forms.
  *
  * @param s - Input string, already lowercased.
  * @returns String with contractions replaced by full forms.
@@ -103,7 +103,7 @@ export const POST: RequestHandler = async ({request, params}) => {
     }
 
     const dbQuestions = db
-        .prepare('SELECT id, correct_answer FROM questions WHERE set_id = ?')
+        .prepare('SELECT id, correct_answer, alternative_answers FROM questions WHERE set_id = ?')
         .all(set.id) as QRow[];
 
     const qMap = new Map<number, QRow>(dbQuestions.map((q) => [q.id, q]));
@@ -115,7 +115,13 @@ export const POST: RequestHandler = async ({request, params}) => {
         const q = qMap.get(sub.questionId);
         if (!q) continue;
 
-        const isCorrect = normalise(sub.given ?? '') === normalise(q.correct_answer);
+        const normGiven = normalise(sub.given ?? '');
+
+        // Build the full set of accepted normalised answers.
+        const alternatives: string[] = JSON.parse(q.alternative_answers || '[]');
+        const acceptedNorm = [normalise(q.correct_answer), ...alternatives.map(normalise),];
+
+        const isCorrect = normGiven.length > 0 && acceptedNorm.includes(normGiven);
 
         if (isCorrect) score++;
         graded.push({questionId: sub.questionId, given: sub.given?.trim() ?? '', isCorrect});

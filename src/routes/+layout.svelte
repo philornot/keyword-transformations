@@ -17,6 +17,7 @@
         <nav class="nav">
             <a href="/create/scan" class="nav-link">
                 <Camera size={16} weight="regular"/>{t('nav.scan')}
+                <span class="beta-badge">{t('common.beta')}</span>
             </a>
             <a href="/create/manual" class="nav-link nav-link--primary">
                 <PencilSimple size={16} weight="regular"/>{t('nav.manual')}
@@ -37,7 +38,6 @@
 </div>
 
 <style>
-    /* ── Shell ────────────────────────────────────────────────────────── */
     .shell {
         min-height: 100vh;
         display: flex;
@@ -97,6 +97,18 @@
     .nav-link--primary:hover {
         background: var(--color-primary-hover);
         color: var(--color-surface);
+    }
+
+    .beta-badge {
+        background: var(--color-warning);
+        color: #fff;
+        font-size: 0.6rem;
+        font-weight: var(--font-weight-black);
+        letter-spacing: var(--letter-spacing-wider);
+        padding: 1px 5px;
+        border-radius: var(--radius-full);
+        line-height: 1.4;
+        vertical-align: middle;
     }
 
     .lang-btn {

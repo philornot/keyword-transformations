@@ -41,7 +41,7 @@ const CANONICAL_GAP = '______';
  *
  * @param rawText - Plain text string from Tesseract or pdf-parse.
  * @returns Array of partially-filled {@link ParsedKWTQuestion} objects.
- *   Expect `correctAnswer` to be null for all — users fill these in review.
+ *   `correctAnswer` and answer lists are empty — users fill these in review.
  */
 export function parseQuestions(rawText: string): ParsedKWTQuestion[] {
   const lines = rawText
@@ -84,16 +84,10 @@ function splitIntoBlocks(lines: string[]): string[][] {
 /**
  * Converts one block of lines into a {@link ParsedKWTQuestion}.
  *
- * Heuristic priority:
- *  - Keyword: first all-caps single-word line
- *  - Gapped sentence: first line containing a gap pattern
- *  - Sentence1: everything before the gapped line (excluding keyword line)
- *
  * @param block - Lines belonging to one numbered question.
- * @returns Parsed question draft.
+ * @returns Parsed question draft with empty answer arrays.
  */
 function parseBlock(block: string[]): ParsedKWTQuestion {
-  // Reconstruct the first line without the leading number.
   const firstMatch = block[0].match(QUESTION_START_RE);
   const afterNumber = firstMatch ? firstMatch[2] : block[0];
 
@@ -108,25 +102,22 @@ function parseBlock(block: string[]): ParsedKWTQuestion {
       keyword = line.trim();
       continue;
     }
-
     if (!sentence2WithGap && GAP_RE.test(line)) {
       sentence2WithGap = line.replace(GAP_RE, CANONICAL_GAP).trim();
       continue;
     }
-
-    // If we haven't found the gap yet, accumulate sentence1.
     if (!sentence2WithGap) {
       sentence1Parts.push(line);
     }
   }
 
-  const sentence1 = sentence1Parts.join(' ').trim();
-
   return {
-    sentence1,
+    sentence1: sentence1Parts.join(' ').trim(),
     sentence2WithGap,
     keyword,
     correctAnswer: null,
+    alternativeAnswers: [],
+    exampleWrongAnswers: [],
     maxWords: 5,
   };
 }

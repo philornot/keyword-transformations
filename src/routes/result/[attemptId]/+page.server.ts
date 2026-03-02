@@ -3,6 +3,11 @@ import {db} from '$lib/server/db.js';
 import {error} from '@sveltejs/kit';
 import type {AttemptResult} from '$lib/types.js';
 
+/** Normalise string the same way as the submit endpoint. */
+function normalise(s: string): string {
+    return s.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 export const load: PageServerLoad = ({params}) => {
     const attempt = db
         .prepare('SELECT id, set_id, score, total FROM attempts WHERE slug = ?')
@@ -21,6 +26,8 @@ export const load: PageServerLoad = ({params}) => {
         sentence2_with_gap: string;
         keyword: string;
         correct_answer: string;
+        alternative_answers: string;
+        example_wrong_answers: string;
         given: string | null;
         is_correct: number;
     };
@@ -32,6 +39,8 @@ export const load: PageServerLoad = ({params}) => {
                q.sentence2_with_gap,
                q.keyword,
                q.correct_answer,
+               q.alternative_answers,
+               q.example_wrong_answers,
                a.given,
                a.is_correct
         FROM answers a
@@ -47,16 +56,25 @@ export const load: PageServerLoad = ({params}) => {
         score: attempt.score,
         total: attempt.total,
         percentage: attempt.total > 0 ? Math.round((attempt.score / attempt.total) * 100) : 0,
-        answers: rows.map((r) => ({
-            questionId: r.question_id,
-            position: r.position,
-            sentence1: r.sentence1,
-            sentence2WithGap: r.sentence2_with_gap,
-            keyword: r.keyword,
-            given: r.given,
-            correctAnswer: r.correct_answer,
-            isCorrect: r.is_correct === 1,
-        })),
+        answers: rows.map((r) => {
+            const altAnswers: string[] = JSON.parse(r.alternative_answers || '[]');
+            const wrongAnswers: string[] = JSON.parse(r.example_wrong_answers || '[]');
+            const normGiven = normalise(r.given ?? '');
+            const isKnownWrong = !r.is_correct && wrongAnswers.some((w) => normalise(w) === normGiven);
+
+            return {
+                questionId: r.question_id,
+                position: r.position,
+                sentence1: r.sentence1,
+                sentence2WithGap: r.sentence2_with_gap,
+                keyword: r.keyword,
+                given: r.given,
+                correctAnswer: r.correct_answer,
+                alternativeAnswers: altAnswers,
+                isCorrect: r.is_correct === 1,
+                isKnownWrongAnswer: isKnownWrong,
+            };
+        }),
     };
 
     return {result};

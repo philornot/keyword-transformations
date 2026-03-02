@@ -1,6 +1,12 @@
 <script lang="ts">
     import {t} from '$lib/i18n.svelte.js';
-    import {Camera, MagnifyingGlass, PencilSimple, RocketLaunch, Upload} from 'phosphor-svelte';
+    import type {PageData} from './$types.js';
+    import type {SetSummary} from '$lib/types.js';
+    import {ArrowRight, Camera, MagnifyingGlass, PencilSimple, RocketLaunch, Upload} from 'phosphor-svelte';
+
+    let {data} = $props<{ data: PageData }>();
+
+    const sets = $derived(data.sets as SetSummary[]);
 </script>
 
 <svelte:head>
@@ -8,21 +14,23 @@
 </svelte:head>
 
 <div class="home">
-    <!-- Hero -->
-    <section class="hero">
-        <h1 class="hero-title">{t('home.title')}</h1>
-        <p class="hero-sub">{t('home.subtitle')}</p>
 
+    <!-- ── Compact hero ──────────────────────────────────────────────── -->
+    <section class="hero">
+        <div class="hero-text">
+            <h1 class="hero-title">{t('home.title')}</h1>
+            <p class="hero-sub">{t('home.subtitle')}</p>
+        </div>
         <div class="cta-row">
             <a href="/create/scan" class="cta-card cta-primary">
-                <Camera size={28} weight="duotone"/>
+                <Camera size={24} weight="duotone"/>
                 <div>
                     <strong>{t('home.scanTitle')}</strong>
                     <span>{t('home.scanDesc')}</span>
                 </div>
             </a>
             <a href="/create/manual" class="cta-card cta-ghost">
-                <PencilSimple size={28} weight="duotone"/>
+                <PencilSimple size={24} weight="duotone"/>
                 <div>
                     <strong>{t('home.manualTitle')}</strong>
                     <span>{t('home.manualDesc')}</span>
@@ -31,13 +39,40 @@
         </div>
     </section>
 
-    <!-- How it works -->
+    <!-- ── Sets listing ──────────────────────────────────────────────── -->
+    <section class="sets-section">
+        <h2 class="section-title">{t('home.setsTitle')}</h2>
+
+        {#if sets.length === 0}
+            <div class="no-sets card">
+                <p>{t('home.noSets')}</p>
+            </div>
+        {:else}
+            <div class="sets-grid">
+                {#each sets as s (s.slug)}
+                    <a href="/set/{s.slug}" class="set-card card">
+                        {#if s.sourceLabel}
+                            <span class="source-badge">{s.sourceLabel}</span>
+                        {/if}
+                        <strong class="set-title">{s.title}</strong>
+                        <span class="set-meta">{t('home.questionsCount', {n: s.questionCount})}</span>
+                        <span class="solve-link">
+              {t('home.solveNow')}
+                            <ArrowRight size={14} weight="bold"/>
+            </span>
+                    </a>
+                {/each}
+            </div>
+        {/if}
+    </section>
+
+    <!-- ── How it works ──────────────────────────────────────────────── -->
     <section class="how">
-        <h2 class="how-title">{t('home.howItWorks')}</h2>
+        <h2 class="section-title">How it works</h2>
         <div class="steps">
             <div class="step card">
                 <div class="step-icon">
-                    <Upload size={24} weight="duotone"/>
+                    <Upload size={22} weight="duotone"/>
                 </div>
                 <div class="step-num">1</div>
                 <strong>{t('home.step1')}</strong>
@@ -46,7 +81,7 @@
             <div class="step-arrow">→</div>
             <div class="step card">
                 <div class="step-icon">
-                    <MagnifyingGlass size={24} weight="duotone"/>
+                    <MagnifyingGlass size={22} weight="duotone"/>
                 </div>
                 <div class="step-num">2</div>
                 <strong>{t('home.step2')}</strong>
@@ -55,7 +90,7 @@
             <div class="step-arrow">→</div>
             <div class="step card">
                 <div class="step-icon">
-                    <RocketLaunch size={24} weight="duotone"/>
+                    <RocketLaunch size={22} weight="duotone"/>
                 </div>
                 <div class="step-num">3</div>
                 <strong>{t('home.step3')}</strong>
@@ -74,48 +109,40 @@
 
     /* ── Hero ─────────────────────────────────────────────────────────── */
     .hero {
-        text-align: center;
         display: flex;
         flex-direction: column;
-        align-items: center;
-        gap: var(--space-5);
-        padding: var(--space-8) 0;
+        gap: var(--space-6);
+        padding: var(--space-6) 0 0;
     }
 
     .hero-title {
-        font-size: var(--font-size-hero);
+        font-size: var(--font-size-4xl);
         font-weight: var(--font-weight-black);
         line-height: var(--line-height-tight);
         letter-spacing: var(--letter-spacing-tight);
-        color: var(--color-text);
-        max-width: 700px;
     }
 
     .hero-sub {
-        font-size: var(--font-size-lg);
+        font-size: var(--font-size-base);
         color: var(--color-text-muted);
         max-width: 560px;
         line-height: var(--line-height-base);
+        margin-top: var(--space-2);
     }
 
-    /* ── CTA cards ────────────────────────────────────────────────────── */
     .cta-row {
         display: flex;
-        gap: var(--space-4);
+        gap: var(--space-3);
         flex-wrap: wrap;
-        justify-content: center;
-        width: 100%;
-        max-width: 620px;
-        margin-top: var(--space-3);
     }
 
     .cta-card {
         flex: 1;
-        min-width: 240px;
+        min-width: 220px;
         display: flex;
         align-items: center;
-        gap: var(--space-4);
-        padding: var(--space-5) var(--space-6);
+        gap: var(--space-3);
+        padding: var(--space-4) var(--space-5);
         border-radius: var(--radius-xl);
         text-decoration: none;
         transition: transform var(--transition-base), box-shadow var(--transition-base);
@@ -123,8 +150,8 @@
 
     .cta-card:hover {
         transform: translateY(-2px);
-        text-decoration: none;
         box-shadow: var(--shadow-lg);
+        text-decoration: none;
     }
 
     .cta-primary {
@@ -143,41 +170,109 @@
     .cta-card div {
         display: flex;
         flex-direction: column;
-        gap: var(--space-1);
-        text-align: left;
+        gap: 2px;
     }
 
     .cta-primary strong {
         color: var(--color-surface);
-        font-size: var(--font-size-base);
+        font-size: var(--font-size-sm);
     }
 
     .cta-primary span {
-        color: rgba(255, 255, 255, 0.78);
-        font-size: var(--font-size-sm);
+        color: rgba(255, 255, 255, 0.75);
+        font-size: var(--font-size-xs);
     }
 
     .cta-ghost strong {
         color: var(--color-text);
-        font-size: var(--font-size-base);
+        font-size: var(--font-size-sm);
     }
 
     .cta-ghost span {
         color: var(--color-text-muted);
+        font-size: var(--font-size-xs);
+    }
+
+    /* ── Section shared ───────────────────────────────────────────────── */
+    .section-title {
+        font-size: var(--font-size-xl);
+        font-weight: var(--font-weight-extrabold);
+        margin-bottom: var(--space-4);
+    }
+
+    /* ── Sets grid ────────────────────────────────────────────────────── */
+    .sets-section {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .no-sets {
+        text-align: center;
+        color: var(--color-text-faint);
+        padding: var(--space-8);
+    }
+
+    .sets-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: var(--space-4);
+    }
+
+    .set-card {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        text-decoration: none;
+        color: var(--color-text);
+        transition: transform var(--transition-base), box-shadow var(--transition-base);
+        padding: var(--space-5);
+    }
+
+    .set-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+        text-decoration: none;
+    }
+
+    .source-badge {
+        display: inline-block;
+        align-self: flex-start;
+        background: var(--color-primary-muted);
+        color: var(--color-primary);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-bold);
+        padding: 2px var(--space-2);
+        border-radius: var(--radius-full);
+        letter-spacing: var(--letter-spacing-wide);
+        text-transform: uppercase;
+    }
+
+    .set-title {
+        font-size: var(--font-size-base);
+        font-weight: var(--font-weight-bold);
+        line-height: var(--line-height-snug);
+        flex: 1;
+    }
+
+    .set-meta {
+        font-size: var(--font-size-xs);
+        color: var(--color-text-muted);
+    }
+
+    .solve-link {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
         font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        color: var(--color-primary);
+        margin-top: var(--space-1);
     }
 
     /* ── How it works ─────────────────────────────────────────────────── */
     .how {
         display: flex;
         flex-direction: column;
-        gap: var(--space-6);
-    }
-
-    .how-title {
-        font-size: var(--font-size-2xl);
-        font-weight: var(--font-weight-extrabold);
-        text-align: center;
     }
 
     .steps {
@@ -185,19 +280,18 @@
         align-items: center;
         gap: var(--space-3);
         flex-wrap: wrap;
-        justify-content: center;
     }
 
     .step {
         flex: 1;
         min-width: 180px;
-        max-width: 220px;
+        max-width: 240px;
         display: flex;
         flex-direction: column;
         align-items: center;
         text-align: center;
         gap: var(--space-2);
-        padding: var(--space-6) var(--space-5);
+        padding: var(--space-5) var(--space-4);
         position: relative;
     }
 
@@ -222,12 +316,12 @@
     }
 
     .step strong {
-        font-size: var(--font-size-base);
+        font-size: var(--font-size-sm);
         font-weight: var(--font-weight-bold);
     }
 
     .step p {
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-xs);
         color: var(--color-text-muted);
         line-height: var(--line-height-snug);
     }
@@ -240,26 +334,15 @@
 
     @media (max-width: 600px) {
         .hero-title {
-            font-size: var(--font-size-3xl);
+            font-size: var(--font-size-2xl);
         }
 
         .step-arrow {
-            transform: rotate(90deg);
-        }
-
-        .steps {
-            flex-direction: column;
-            align-items: stretch;
+            display: none;
         }
 
         .step {
             max-width: 100%;
-            flex-direction: row;
-            text-align: left;
-        }
-
-        .step-icon {
-            flex-shrink: 0;
         }
     }
 </style>

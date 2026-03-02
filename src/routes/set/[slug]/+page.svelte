@@ -1,12 +1,6 @@
 <script lang="ts">
     /**
      * /set/[slug] — interactive KWT test page.
-     *
-     * Each question shows:
-     *  - The original sentence
-     *  - The keyword in bold caps
-     *  - The gapped sentence with an inline text input where the gap is
-     *
      * Correct answers are never sent to the browser.
      */
 
@@ -20,7 +14,6 @@
 
     const GAP = '______';
 
-    /** Maps question id → typed answer string. */
     let answers = $state<Record<number, string>>({});
     let isSubmitting = $state(false);
     let errorMessage = $state('');
@@ -30,7 +23,7 @@
     );
 
     /**
-     * Splits a sentence on the gap placeholder, returning at most two parts.
+     * Splits a sentence on the gap placeholder.
      *
      * @param s - Sentence string containing `______`.
      * @returns [before, after] tuple.
@@ -80,6 +73,9 @@
 
 <div class="set-page">
     <div class="set-header">
+        {#if data.set.sourceLabel}
+            <span class="source-badge">{data.set.sourceLabel}</span>
+        {/if}
         <h1>{data.set.title}</h1>
         <p class="q-count">{t('set.questions', {n: data.set.questions.length})}</p>
         {#if data.set.questions[0]}
@@ -150,6 +146,23 @@
     .set-header {
         border-bottom: 2px solid var(--color-border-subtle);
         padding-bottom: var(--space-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+    }
+
+    .source-badge {
+        display: inline-block;
+        align-self: flex-start;
+        background: var(--color-primary-muted);
+        color: var(--color-primary);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-bold);
+        padding: 2px var(--space-2);
+        border-radius: var(--radius-full);
+        letter-spacing: var(--letter-spacing-wide);
+        text-transform: uppercase;
+        margin-bottom: var(--space-1);
     }
 
     h1 {
@@ -159,13 +172,11 @@
 
     .q-count {
         color: var(--color-text-muted);
-        margin-top: var(--space-1);
     }
 
     .instructions {
         color: var(--color-primary);
         font-size: var(--font-size-sm);
-        margin-top: var(--space-2);
         font-weight: var(--font-weight-medium);
     }
 

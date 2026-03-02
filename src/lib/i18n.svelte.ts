@@ -1,10 +1,5 @@
 /**
  * @fileoverview Simple reactive i18n for Polish (default) and English.
- *
- * Uses a Svelte 5 module-level $state so the locale persists across
- * navigation without any server round-trip. The `t()` function reads
- * `locale.lang` which is reactive — calling it from a Svelte template
- * or a $derived block re-runs automatically on language change.
  */
 
 export const locale = $state<{ lang: 'pl' | 'en' }>({lang: 'pl'});
@@ -25,7 +20,10 @@ const pl = {
         step2desc: 'Popraw automatycznie wykryte pytania i uzupełnij odpowiedzi.',
         step3: 'Udostępnij',
         step3desc: 'Opublikuj i wyślij link — każdy może rozwiązać test w przeglądarce.',
-        howItWorks: 'Jak to działa',
+        setsTitle: 'Dostępne zestawy',
+        noSets: 'Nie ma jeszcze żadnych zestawów. Utwórz pierwszy!',
+        solveNow: 'Rozwiąż',
+        questionsCount: '{n} pyt.',
     }, scan: {
         title: 'Zeskanuj kartkę',
         subtitle: 'Obsługiwane formaty: JPEG, PNG, WEBP, PDF — maks. 20 MB',
@@ -42,6 +40,8 @@ const pl = {
         subtitle: '{n} pytań wykrytych — popraw błędy i uzupełnij poprawne odpowiedzi.',
         setTitle: 'Tytuł zestawu',
         setTitlePlaceholder: 'np. Transformacje – Unit 5',
+        sourceLabel: 'Źródło (opcjonalnie)',
+        sourceLabelPlaceholder: 'np. Matura 2024, poziom rozszerzony',
         publish: 'Opublikuj zestaw',
         publishing: 'Publikowanie…',
         addQuestion: 'Dodaj pytanie',
@@ -53,6 +53,11 @@ const pl = {
         keywordph: 'np. UNTIL',
         answer: 'Poprawna odpowiedź',
         answerph: 'Wpisz frazę wypełniającą lukę…',
+        alternativeAnswers: 'Alternatywne poprawne odpowiedzi',
+        altAnswerPh: 'np. had studied harder',
+        exampleWrongAnswers: 'Przykłady niepoprawnych odpowiedzi',
+        wrongAnswerPh: 'np. had to study',
+        addAnswerBtn: 'Dodaj',
         maxWords: 'Maks. wyrazów',
         errSentence1: 'Zdanie oryginalne jest wymagane.',
         errSentence2: 'Zdanie z luką jest wymagane i musi zawierać ______.',
@@ -64,6 +69,8 @@ const pl = {
         subtitle: 'Utwórz zestaw ćwiczeń Key Word Transformation bez skanowania.',
         setTitle: 'Tytuł zestawu',
         setTitlePlaceholder: 'np. FCE Transformacje – Czas przeszły',
+        sourceLabel: 'Źródło (opcjonalnie)',
+        sourceLabelPlaceholder: 'np. Matura 2024, poziom rozszerzony',
         publish: 'Opublikuj zestaw',
         publishing: 'Publikowanie…',
         addQuestion: 'Dodaj transformację',
@@ -89,9 +96,11 @@ const pl = {
         poor: 'Nie poddawaj się — ucz się dalej!',
         yourAnswer: 'Twoja odpowiedź:',
         correct: 'Poprawna:',
+        alsoAccepted: 'Akceptowane też:',
         noAnswer: '(brak odpowiedzi)',
+        knownWrongAnswer: 'Typowy błąd',
     }, common: {
-        remove: 'Usuń', words3: '3 wyrazy', words4: '4 wyrazy', words5: '5 wyrazów', langToggle: 'EN',
+        remove: 'Usuń', words3: '3 wyrazy', words4: '4 wyrazy', words5: '5 wyrazów', langToggle: 'EN', beta: 'BETA',
     },
 };
 
@@ -111,7 +120,10 @@ const en: typeof pl = {
         step2desc: 'Correct auto-detected questions and fill in the correct answers.',
         step3: 'Share',
         step3desc: 'Publish and send the link — anyone can take the test in their browser.',
-        howItWorks: 'How it works',
+        setsTitle: 'Available sets',
+        noSets: 'No sets yet. Create the first one!',
+        solveNow: 'Start',
+        questionsCount: '{n} q.',
     }, scan: {
         title: 'Scan worksheet',
         subtitle: 'Supported formats: JPEG, PNG, WEBP, PDF — max 20 MB',
@@ -128,6 +140,8 @@ const en: typeof pl = {
         subtitle: '{n} questions detected — fix any mistakes and fill in correct answers.',
         setTitle: 'Set title',
         setTitlePlaceholder: 'e.g. Unit 5 Key Word Transformations',
+        sourceLabel: 'Source (optional)',
+        sourceLabelPlaceholder: 'e.g. June 2024 Matura, advanced level',
         publish: 'Publish set',
         publishing: 'Publishing…',
         addQuestion: 'Add question',
@@ -139,6 +153,11 @@ const en: typeof pl = {
         keywordph: 'e.g. UNTIL',
         answer: 'Correct answer',
         answerph: 'Type the phrase that fills the gap…',
+        alternativeAnswers: 'Alternative correct answers',
+        altAnswerPh: 'e.g. had studied harder',
+        exampleWrongAnswers: 'Example wrong answers',
+        wrongAnswerPh: 'e.g. had to study',
+        addAnswerBtn: 'Add',
         maxWords: 'Max words',
         errSentence1: 'Original sentence is required.',
         errSentence2: 'Gapped sentence is required and must contain ______.',
@@ -150,6 +169,8 @@ const en: typeof pl = {
         subtitle: 'Create a Key Word Transformation set without scanning.',
         setTitle: 'Set title',
         setTitlePlaceholder: 'e.g. FCE Transformations – Past Tenses',
+        sourceLabel: 'Source (optional)',
+        sourceLabelPlaceholder: 'e.g. June 2024 Matura, advanced level',
         publish: 'Publish set',
         publishing: 'Publishing…',
         addQuestion: 'Add transformation',
@@ -175,9 +196,11 @@ const en: typeof pl = {
         poor: 'Keep going — review the material!',
         yourAnswer: 'Your answer:',
         correct: 'Correct:',
+        alsoAccepted: 'Also accepted:',
         noAnswer: '(no answer)',
+        knownWrongAnswer: 'Common mistake',
     }, common: {
-        remove: 'Remove', words3: '3 words', words4: '4 words', words5: '5 words', langToggle: 'PL',
+        remove: 'Remove', words3: '3 words', words4: '4 words', words5: '5 words', langToggle: 'PL', beta: 'BETA',
     },
 };
 
@@ -186,9 +209,6 @@ const translations = {pl, en} as const;
 /**
  * Returns the translated string for the given dot-separated key,
  * substituting any `{variable}` placeholders with the supplied values.
- *
- * Reactive: reads `locale.lang`, so any Svelte template or `$derived`
- * that calls `t()` will re-render on locale change.
  *
  * @param key - Dot-separated path into the translation tree (e.g. "nav.scan").
  * @param vars - Optional placeholder substitutions.

@@ -19,22 +19,36 @@
     });
 
     let title = $state(reviewState.title || '');
+    let sourceLabel = $state('');
     let questions = $state<ParsedKWTQuestion[]>(
-        reviewState.questions.map((q) => ({...q, keyword: q.keyword.toUpperCase()})),
+        reviewState.questions.map((q) => ({
+            ...q,
+            keyword: q.keyword.toUpperCase(),
+            alternativeAnswers: q.alternativeAnswers ?? [],
+            exampleWrongAnswers: q.exampleWrongAnswers ?? [],
+        })),
     );
     let isPublishing = $state(false);
     let errorMessage = $state('');
 
     /** Creates a blank KWT exercise and appends it to the list. */
     function addQuestion() {
-        questions.push({sentence1: '', sentence2WithGap: '', keyword: '', correctAnswer: null, maxWords: 5});
+        questions.push({
+            sentence1: '',
+            sentence2WithGap: '',
+            keyword: '',
+            correctAnswer: null,
+            alternativeAnswers: [],
+            exampleWrongAnswers: [],
+            maxWords: 5,
+        });
     }
 
     /**
      * Returns a validation error for a question, or null if valid.
      *
      * @param q - The question to validate.
-     * @returns Error message string, or null if the question is valid.
+     * @returns Error message string or null.
      */
     function questionError(q: ParsedKWTQuestion): string | null {
         if (!q.sentence1.trim()) return t('review.errSentence1');
@@ -61,11 +75,14 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     title: title.trim(),
+                    sourceLabel: sourceLabel.trim() || undefined,
                     questions: questions.map((q) => ({
                         sentence1: q.sentence1.trim(),
                         sentence2WithGap: q.sentence2WithGap.trim(),
                         keyword: q.keyword.trim(),
                         correctAnswer: q.correctAnswer!.trim(),
+                        alternativeAnswers: q.alternativeAnswers,
+                        exampleWrongAnswers: q.exampleWrongAnswers,
                         maxWords: q.maxWords,
                     })),
                 }),
@@ -95,11 +112,7 @@
             <h1>{t('review.title')}</h1>
             <p class="subtitle">{t('review.subtitle', {n: questions.length})}</p>
         </div>
-        <button
-                class="btn-primary pub-btn"
-                disabled={!isValid || isPublishing}
-                onclick={publish}
-        >
+        <button class="btn-primary pub-btn" disabled={!isValid || isPublishing} onclick={publish}>
             {#if isPublishing}
                 <span class="spinner"></span> {t('review.publishing')}
             {:else}
@@ -108,15 +121,27 @@
         </button>
     </div>
 
-    <div class="title-row">
-        <label class="field-label" for="set-title">{t('review.setTitle')}</label>
-        <input
-                id="set-title"
-                class="text-input"
-                type="text"
-                bind:value={title}
-                placeholder={t('review.setTitlePlaceholder')}
-        />
+    <div class="meta-row">
+        <div class="meta-field">
+            <label class="field-label" for="set-title">{t('review.setTitle')}</label>
+            <input
+                    id="set-title"
+                    class="text-input"
+                    type="text"
+                    bind:value={title}
+                    placeholder={t('review.setTitlePlaceholder')}
+            />
+        </div>
+        <div class="meta-field">
+            <label class="field-label" for="source-label">{t('review.sourceLabel')}</label>
+            <input
+                    id="source-label"
+                    class="text-input"
+                    type="text"
+                    bind:value={sourceLabel}
+                    placeholder={t('review.sourceLabelPlaceholder')}
+            />
+        </div>
     </div>
 
     {#if errorMessage}
@@ -174,7 +199,15 @@
         flex-shrink: 0;
     }
 
-    .title-row {
+    .meta-row {
+        display: flex;
+        gap: var(--space-4);
+        flex-wrap: wrap;
+    }
+
+    .meta-field {
+        flex: 1;
+        min-width: 220px;
         display: flex;
         flex-direction: column;
         gap: var(--space-1);

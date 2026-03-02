@@ -8,7 +8,7 @@
 
     import {t} from '$lib/i18n.svelte.js';
     import type {ParsedKWTQuestion} from '$lib/types.js';
-    import {WarningCircle, XSquare} from 'phosphor-svelte';
+    import {Plus, WarningCircle, XSquare} from 'phosphor-svelte';
 
     interface Props {
         question: ParsedKWTQuestion;
@@ -21,9 +21,13 @@
 
     const GAP = '______';
 
+    /** Local inputs for the "add answer" rows. */
+    let newAltAnswer = $state('');
+    let newWrongAnswer = $state('');
+
     /**
      * Uppercases and strips non-alpha characters from keyword input.
-     * Accepts the raw Event so no `as` cast is needed in the template.
+     *
      * @param e - Native input event.
      */
     function onKeywordInput(e: Event) {
@@ -33,6 +37,7 @@
 
     /**
      * Inserts the canonical gap placeholder at the cursor position in sentence2.
+     *
      * @param el - The textarea DOM element.
      */
     function insertGap(el: HTMLTextAreaElement) {
@@ -46,12 +51,46 @@
     }
 
     /**
-     * Retrieves the sentence2 textarea by index and delegates to insertGap.
-     * Avoids TypeScript `as` casts inside Svelte template expressions.
+     * Retrieves the sentence2 textarea by index and delegates to {@link insertGap}.
      */
     function handleInsertGap() {
         const el = document.getElementById(`s2-${index}`);
         if (el instanceof HTMLTextAreaElement) insertGap(el);
+    }
+
+    /**
+     * Appends a trimmed non-empty string to the alternative answers list.
+     */
+    function addAltAnswer() {
+        const val = newAltAnswer.trim();
+        if (val) {
+            question.alternativeAnswers.push(val);
+            newAltAnswer = '';
+        }
+    }
+
+    /**
+     * Appends a trimmed non-empty string to the wrong answers list.
+     */
+    function addWrongAnswer() {
+        const val = newWrongAnswer.trim();
+        if (val) {
+            question.exampleWrongAnswers.push(val);
+            newWrongAnswer = '';
+        }
+    }
+
+    /**
+     * Handles Enter key in the "add answer" inputs.
+     *
+     * @param e - Keyboard event.
+     * @param handler - The add function to call.
+     */
+    function onAnswerKeydown(e: KeyboardEvent, handler: () => void) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handler();
+        }
     }
 </script>
 
@@ -72,6 +111,7 @@
         </button>
     </div>
 
+    <!-- Sentence 1 -->
     <label class="field-label" for="s1-{index}">{t('review.sentence1')}</label>
     <textarea
             id="s1-{index}"
@@ -81,6 +121,7 @@
             placeholder={t('review.sentence1ph')}
     ></textarea>
 
+    <!-- Keyword -->
     <label class="field-label" for="kw-{index}">{t('review.keyword')}</label>
     <input
             id="kw-{index}"
@@ -91,6 +132,7 @@
             placeholder={t('review.keywordph')}
     />
 
+    <!-- Sentence 2 with gap -->
     <label class="field-label" for="s2-{index}">{t('review.sentence2')}</label>
     <div class="s2-wrap">
     <textarea
@@ -109,6 +151,7 @@
         </button>
     </div>
 
+    <!-- Primary answer + max words -->
     <div class="bottom-row">
         <div class="answer-field">
             <label class="field-label" for="ans-{index}">{t('review.answer')}</label>
@@ -127,6 +170,70 @@
                 <option value={4}>{t('common.words4')}</option>
                 <option value={5}>{t('common.words5')}</option>
             </select>
+        </div>
+    </div>
+
+    <!-- Alternative correct answers -->
+    <div class="answers-block">
+        <span class="field-label">{t('review.alternativeAnswers')}</span>
+        {#if question.alternativeAnswers.length > 0}
+            <div class="chip-list">
+                {#each question.alternativeAnswers as ans, i}
+          <span class="chip chip-ok">
+            {ans}
+              <button
+                      class="chip-rm"
+                      type="button"
+                      aria-label="{t('common.remove')} {ans}"
+                      onclick={() => question.alternativeAnswers.splice(i, 1)}
+              ><XSquare size={11} weight="bold"/></button>
+          </span>
+                {/each}
+            </div>
+        {/if}
+        <div class="add-answer-row">
+            <input
+                    class="text-input add-input"
+                    type="text"
+                    bind:value={newAltAnswer}
+                    placeholder={t('review.altAnswerPh')}
+                    onkeydown={(e) => onAnswerKeydown(e, addAltAnswer)}
+            />
+            <button type="button" class="btn-ghost add-chip-btn" onclick={addAltAnswer}>
+                <Plus size={13} weight="bold"/> {t('review.addAnswerBtn')}
+            </button>
+        </div>
+    </div>
+
+    <!-- Example wrong answers -->
+    <div class="answers-block">
+        <span class="field-label">{t('review.exampleWrongAnswers')}</span>
+        {#if question.exampleWrongAnswers.length > 0}
+            <div class="chip-list">
+                {#each question.exampleWrongAnswers as ans, i}
+          <span class="chip chip-err">
+            {ans}
+              <button
+                      class="chip-rm"
+                      type="button"
+                      aria-label="{t('common.remove')} {ans}"
+                      onclick={() => question.exampleWrongAnswers.splice(i, 1)}
+              ><XSquare size={11} weight="bold"/></button>
+          </span>
+                {/each}
+            </div>
+        {/if}
+        <div class="add-answer-row">
+            <input
+                    class="text-input add-input"
+                    type="text"
+                    bind:value={newWrongAnswer}
+                    placeholder={t('review.wrongAnswerPh')}
+                    onkeydown={(e) => onAnswerKeydown(e, addWrongAnswer)}
+            />
+            <button type="button" class="btn-ghost add-chip-btn" onclick={addWrongAnswer}>
+                <Plus size={13} weight="bold"/> {t('review.addAnswerBtn')}
+            </button>
         </div>
     </div>
 </div>
@@ -220,5 +327,83 @@
     .mw-field select {
         width: 120px;
         cursor: pointer;
+    }
+
+    /* ── Answer chip lists ────────────────────────────────────────────── */
+    .answers-block {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        padding: var(--space-3);
+        background: var(--color-neutral-100);
+        border-radius: var(--radius-md);
+    }
+
+    .chip-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+    }
+
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+    }
+
+    .chip-ok {
+        background: var(--color-success-light);
+        color: var(--color-success-dark);
+    }
+
+    .chip-err {
+        background: var(--color-danger-light);
+        color: var(--color-danger-dark);
+    }
+
+    .chip-rm {
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        color: inherit;
+        opacity: 0.7;
+        border-radius: 0;
+    }
+
+    .chip-rm:hover {
+        opacity: 1;
+    }
+
+    .chip-rm:active {
+        transform: none;
+    }
+
+    .add-answer-row {
+        display: flex;
+        gap: var(--space-2);
+        align-items: center;
+    }
+
+    .add-input {
+        flex: 1;
+        font-size: var(--font-size-sm);
+        padding: var(--space-1) var(--space-2);
+    }
+
+    .add-chip-btn {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+        padding: var(--space-1) var(--space-3);
+        font-size: var(--font-size-xs);
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 </style>
