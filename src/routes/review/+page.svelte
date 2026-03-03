@@ -1,10 +1,4 @@
 <script lang="ts">
-    /**
-     * /review — OCR output correction for KWT exercises.
-     * Reads from reviewState (set by /create/scan), lets user fix every field,
-     * then publishes via POST /api/sets.
-     */
-
     import {goto} from '$app/navigation';
     import {reviewState} from '$lib/store.svelte.js';
     import {t} from '$lib/i18n.svelte.js';
@@ -31,6 +25,15 @@
     let isPublishing = $state(false);
     let errorMessage = $state('');
 
+    /** True after the user has clicked Publish at least once. */
+    let submitAttempted = $state(false);
+
+    /**
+     * Set of question indices the user has interacted with (blur on any field).
+     * Questions in this set show their validation error immediately.
+     */
+    let touchedIndices = $state(new Set<number>());
+
     /** Creates a blank KWT exercise and appends it to the list. */
     function addQuestion() {
         questions.push({
@@ -42,6 +45,15 @@
             exampleWrongAnswers: [],
             maxWords: 5,
         });
+    }
+
+    /**
+     * Marks a question index as touched so its errors become visible.
+     *
+     * @param index - The array index of the question to mark.
+     */
+    function touch(index: number) {
+        touchedIndices = new Set(touchedIndices).add(index);
     }
 
     /**
@@ -58,6 +70,19 @@
         return null;
     }
 
+    /**
+     * Returns the error for a question only when the user should see it.
+     * Error is shown after the question has been touched OR after a publish attempt.
+     *
+     * @param q - The question to check.
+     * @param index - The array index of the question.
+     * @returns Error message string or null.
+     */
+    function visibleError(q: ParsedKWTQuestion, index: number): string | null {
+        if (!submitAttempted && !touchedIndices.has(index)) return null;
+        return questionError(q);
+    }
+
     const isValid = $derived(
         title.trim().length > 0 &&
         questions.length > 0 &&
@@ -66,7 +91,9 @@
 
     /** Publishes the set and redirects to the live test URL. */
     async function publish() {
+        submitAttempted = true;
         if (!isValid) return;
+
         isPublishing = true;
         errorMessage = '';
         try {
@@ -112,7 +139,7 @@
             <h1>{t('review.title')}</h1>
             <p class="subtitle">{t('review.subtitle', {n: questions.length})}</p>
         </div>
-        <button class="btn-primary pub-btn" disabled={!isValid || isPublishing} onclick={publish}>
+        <button class="btn-primary pub-btn" disabled={isPublishing} onclick={publish}>
             {#if isPublishing}
                 <span class="spinner"></span> {t('review.publishing')}
             {:else}
@@ -153,8 +180,9 @@
             <KwtQuestionEditor
                     bind:question={questions[i]}
                     index={i}
-                    error={questionError(q)}
+                    error={visibleError(q, i)}
                     onRemove={() => questions.splice(i, 1)}
+                    onTouch={() => touch(i)}
             />
         {/each}
     </div>

@@ -14,9 +14,11 @@
         index: number;
         onRemove: () => void;
         error: string | null;
+        onTouch?: () => void;
     }
 
-    let {question = $bindable(), index, onRemove, error}: Props = $props();
+    // KwtQuestionEditor.svelte
+    let {question = $bindable(), index, error, onRemove, onTouch}: Props = $props();
 
     const GAP = '______';
 
@@ -155,6 +157,7 @@
             rows="2"
             bind:value={question.sentence1}
             placeholder={t('review.sentence1ph')}
+            onblur={() => onTouch?.()}
     ></textarea>
 
     <!-- Keyword -->
@@ -166,6 +169,7 @@
             value={question.keyword}
             oninput={onKeywordInput}
             placeholder={t('review.keywordph')}
+            onblur={() => onTouch?.()}
     />
 
     <!-- Sentence 2 — oninput normalises any _+ run to the canonical gap -->
@@ -181,6 +185,7 @@
             value={question.sentence2WithGap}
             oninput={onGapInput}
             placeholder={t('review.sentence2ph')}
+            onblur={() => onTouch?.()}
     ></textarea>
         <button
                 type="button"
@@ -202,6 +207,7 @@
                     type="text"
                     bind:value={question.correctAnswer}
                     placeholder={t('review.answerph')}
+                    onblur={() => onTouch?.()}
             />
         </div>
         <div class="mw-field">
@@ -239,6 +245,7 @@
                     bind:value={newAltAnswer}
                     placeholder={t('review.altAnswerPh')}
                     onkeydown={(e) => onAnswerKeydown(e, addAltAnswer)}
+                    onblur={() => onTouch?.()}
             />
             <button type="button" class="btn-ghost add-chip-btn" onclick={addAltAnswer}>
                 <Plus size={13} weight="bold"/> {t('review.addAnswerBtn')}
@@ -271,6 +278,7 @@
                     bind:value={newWrongAnswer}
                     placeholder={t('review.wrongAnswerPh')}
                     onkeydown={(e) => onAnswerKeydown(e, addWrongAnswer)}
+                    onblur={() => onTouch?.()}
             />
             <button type="button" class="btn-ghost add-chip-btn" onclick={addWrongAnswer}>
                 <Plus size={13} weight="bold"/> {t('review.addAnswerBtn')}

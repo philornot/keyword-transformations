@@ -17,6 +17,18 @@
     let isPublishing = $state(false);
     let errorMessage = $state('');
 
+    /**
+     * True after the user has clicked "Publish" at least once.
+     * Triggers full-form validation highlighting.
+     */
+    let submitAttempted = $state(false);
+
+    /**
+     * Set of question `_key` values the user has interacted with (blur fired).
+     * Questions in this set show their validation error immediately.
+     */
+    let touchedKeys = $state(new Set<number>());
+
     /** Creates a blank KWT exercise and appends it to the list. */
     function addQuestion() {
         questions.push({
@@ -29,6 +41,16 @@
             exampleWrongAnswers: [],
             maxWords: 5,
         });
+    }
+
+    /**
+     * Marks a question as touched so its errors become visible.
+     *
+     * @param key - The `_key` of the draft question to mark.
+     */
+    function touch(key: number) {
+        touchedKeys.add(key);
+        touchedKeys = touchedKeys;
     }
 
     /**
@@ -45,6 +67,18 @@
         return null;
     }
 
+    /**
+     * Returns the error for a question only when the user should see it:
+     * after touching the question's fields, or after a failed publish attempt.
+     *
+     * @param q - The draft question.
+     * @returns Error message string or null.
+     */
+    function visibleError(q: DraftQuestion): string | null {
+        if (!submitAttempted && !touchedKeys.has(q._key)) return null;
+        return questionError(q);
+    }
+
     const isValid = $derived(
         title.trim().length > 0 &&
         questions.length > 0 &&
@@ -53,7 +87,9 @@
 
     /** Publishes the set and redirects to the live URL. */
     async function publish() {
+        submitAttempted = true;
         if (!isValid) return;
+
         isPublishing = true;
         errorMessage = '';
         try {
@@ -76,7 +112,7 @@
             });
             if (!res.ok) {
                 const {error} = await res.json();
-                throw new Error(error ?? 'Failed.');
+                throw new Error(error ?? 'Failed.'); // todo: 'throw' of exception caught locally
             }
             const {slug} = await res.json();
             goto(`/set/${slug}`);
@@ -98,7 +134,7 @@
             <h1>{t('manual.title')}</h1>
             <p class="subtitle">{t('manual.subtitle')}</p>
         </div>
-        <button class="btn-primary pub-btn" disabled={!isValid || isPublishing} onclick={publish}>
+        <button class="btn-primary pub-btn" disabled={isPublishing} onclick={publish}>
             {#if isPublishing}
                 <CircleNotch size={18} weight="bold" class="spin"/> {t('manual.publishing')}
             {:else}
@@ -142,8 +178,9 @@
                 <KwtQuestionEditor
                         bind:question={questions[i]}
                         index={i}
-                        error={questionError(q)}
-                        onRemove={() => questions.splice(i, 1)}
+                        error={visibleError(q)}
+                        onRemove={() => questions = questions.filter((qq) => qq._key !== q._key)}
+                        onTouch={() => touch(q._key)}
                 />
             {/each}
         </div>
