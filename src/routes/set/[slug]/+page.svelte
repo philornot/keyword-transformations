@@ -8,7 +8,7 @@
     import type {PublicKWTQuestion} from '$lib/types.js';
     import {goto} from '$app/navigation';
     import {t} from '$lib/i18n.svelte.js';
-    import {CheckFat} from 'phosphor-svelte';
+    import {CheckFat, PencilSimple} from 'phosphor-svelte';
 
     let {data} = $props<{ data: PageData }>();
 
@@ -78,6 +78,11 @@
         {/if}
         <h1>{data.set.title}</h1>
         <p class="q-count">{t('set.questions', {n: data.set.questions.length})}</p>
+        <!-- Edit button — always visible; behaviour differs for admin vs. regular user -->
+        <a href="/edit/{data.set.slug}" class="edit-link">
+            <PencilSimple size={14} weight="bold"/>
+            Edytuj
+        </a>
         {#if data.set.questions[0]}
             <p class="instructions">
                 {t('set.maxWords', {n: data.set.questions[0].maxWords})} — {t('set.keyword')} {t('set.keywordRequired')}
@@ -307,5 +312,26 @@
         padding: var(--space-3) var(--space-8);
         font-size: var(--font-size-base);
         font-weight: var(--font-weight-semibold);
+    }
+
+    .edit-link {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        align-self: flex-start;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--color-text-muted);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--space-1) var(--space-3);
+        text-decoration: none;
+        transition: background var(--transition-base), color var(--transition-base);
+    }
+
+    .edit-link:hover {
+        background: var(--color-neutral-100);
+        color: var(--color-text);
+        text-decoration: none;
     }
 </style>

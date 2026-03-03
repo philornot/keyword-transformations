@@ -1,7 +1,7 @@
 <script lang="ts">
     import type {ActionData, PageData} from './$types.js';
     import {enhance} from '$app/forms';
-    import {ArrowSquareOut, Trash} from 'phosphor-svelte';
+    import {ArrowSquareOut, PencilSimple, Trash} from 'phosphor-svelte';
 
     let {data, form} = $props<{ data: PageData; form: ActionData }>();
     let deletingSlug = $state<string | null>(null);
@@ -75,6 +75,13 @@
                                         </button>
                                     </div>
                                 {:else}
+                                    <a
+                                            href="/edit/{s.slug}"
+                                            class="btn-ghost edit-btn"
+                                            aria-label="Edytuj {s.title}"
+                                    >
+                                        <PencilSimple size={15} weight="regular"/>
+                                    </a>
                                     <button class="btn-ghost delete-btn" type="button"
                                             onclick={() => (deletingSlug = s.slug)} aria-label="Usuń {s.title}">
                                         <Trash size={15} weight="regular"/>
@@ -89,3 +96,19 @@
         {/if}
     {/if}
 </div>
+
+<style>
+    .edit-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--space-1) var(--space-2);
+        font-size: var(--font-size-xs);
+    }
+
+    .td-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+</style>

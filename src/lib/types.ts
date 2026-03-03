@@ -104,3 +104,13 @@ export interface UploadResponse {
     questions: ParsedKWTQuestion[];
     rawText: string;
 }
+
+/** Full KWT set with questions, as loaded for the edit page. */
+export interface EditableSet {
+    id: number;
+    slug: string;
+    title: string;
+    sourceLabel: string | null;
+    isPublic: boolean;
+    questions: KWTQuestion[];
+}
