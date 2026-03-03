@@ -82,6 +82,79 @@ function normalise(s: string): string {
     return expandContractions(s.toLowerCase().trim().replace(/\s+/g, ' '));
 }
 
+/**
+ * Expands an answer that contains parenthesised optional segments into all
+ * valid variants. Parentheses may appear anywhere in the string and may be
+ * nested at one level.
+ *
+ * Examples:
+ *   "so noisy outside (that)"   → ["so noisy outside that", "so noisy outside"]
+ *   "(very) noisy outside"      → ["very noisy outside", "noisy outside"]
+ *   "so (very) noisy (that)"    → ["so very noisy that", "so very noisy",
+ *                                   "so noisy that", "so noisy"]
+ *   "had not been"              → ["had not been"]  (no parens → passthrough)
+ *
+ * The function generates the Cartesian product of including/excluding each
+ * parenthesised group, then normalises and deduplicates the results.
+ *
+ * @param raw - A single answer string, possibly containing `(…)` groups.
+ * @returns Array of one or more normalised variant strings.
+ */
+function expandOptionals(raw: string): string[] {
+    // Find all parenthesised groups with their positions.
+    const groups: Array<{ start: number; end: number; inner: string }> = [];
+    const re = /\(([^)]*)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(raw)) !== null) {
+        groups.push({start: m.index, end: m.index + m[0].length, inner: m[1]});
+    }
+
+    if (groups.length === 0) return [normalise(raw)];
+
+    // Generate 2^n variants by toggling each group (include inner / exclude).
+    const variants = new Set<string>();
+    const count = 2 ** groups.length;
+
+    for (let mask = 0; mask < count; mask++) {
+        let result = '';
+        let cursor = 0;
+
+        for (let gi = 0; gi < groups.length; gi++) {
+            const g = groups[gi];
+            // Text before this group.
+            result += raw.slice(cursor, g.start);
+            // Bit gi set → include the inner text; unset → omit entirely.
+            if (mask & (1 << gi)) {
+                result += g.inner;
+            }
+            cursor = g.end;
+        }
+        // Remaining text after the last group.
+        result += raw.slice(cursor);
+
+        // Collapse extra whitespace that can appear when an optional group is
+        // omitted (e.g. "outside  that" → "outside that").
+        const normalised = normalise(result.replace(/\s{2,}/g, ' '));
+        if (normalised) variants.add(normalised);
+    }
+
+    return Array.from(variants);
+}
+
+/**
+ * Builds the full set of normalised accepted answers for a question,
+ * expanding any parenthesised optional segments in every stored answer.
+ *
+ * @param correctAnswer - The primary correct answer string.
+ * @param alternativeAnswers - Additional accepted answer strings.
+ * @returns Deduplicated array of normalised strings ready for comparison.
+ */
+function buildAcceptedSet(correctAnswer: string, alternativeAnswers: string[]): string[] {
+    const all = [correctAnswer, ...alternativeAnswers];
+    const expanded = all.flatMap(expandOptionals);
+    return [...new Set(expanded)];
+}
+
 export const POST: RequestHandler = async ({request, params}) => {
     const {slug} = params;
 
@@ -116,10 +189,8 @@ export const POST: RequestHandler = async ({request, params}) => {
         if (!q) continue;
 
         const normGiven = normalise(sub.given ?? '');
-
-        // Build the full set of accepted normalised answers.
         const alternatives: string[] = JSON.parse(q.alternative_answers || '[]');
-        const acceptedNorm = [normalise(q.correct_answer), ...alternatives.map(normalise),];
+        const acceptedNorm = buildAcceptedSet(q.correct_answer, alternatives);
 
         const isCorrect = normGiven.length > 0 && acceptedNorm.includes(normGiven);
 
