@@ -6,8 +6,9 @@
  *   PDFs); for scanned PDFs the quality depends on the embedded resolution.
  */
 
-import Tesseract from 'tesseract.js';
+import {createWorker} from 'tesseract.js';
 import pdfParse from 'pdf-parse';
+import {join} from 'path';
 
 /**
  * Extracts raw text from the given file buffer.
@@ -18,15 +19,15 @@ import pdfParse from 'pdf-parse';
  * @throws {Error} If the MIME type is unsupported or OCR fails.
  */
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
-  if (mimeType === 'application/pdf') {
-    return extractTextFromPdf(buffer);
-  }
+    if (mimeType === 'application/pdf') {
+        return extractTextFromPdf(buffer);
+    }
 
-  if (mimeType.startsWith('image/')) {
-    return extractTextFromImage(buffer);
-  }
+    if (mimeType.startsWith('image/')) {
+        return extractTextFromImage(buffer);
+    }
 
-  throw new Error(`Unsupported file type: ${mimeType}`);
+    throw new Error(`Unsupported file type: ${mimeType}`);
 }
 
 /**
@@ -36,11 +37,13 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
  * @returns Recognised text.
  */
 async function extractTextFromImage(buffer: Buffer): Promise<string> {
-  const { data } = await Tesseract.recognize(buffer, 'eng+pol', {
-    // Suppress Tesseract's own console logs in production.
-    logger: () => {}
-  });
-  return data.text;
+    const worker = await createWorker(['eng', 'pol'], 1, {
+        langPath: join(process.cwd()), logger: () => {
+        },
+    });
+    const {data} = await worker.recognize(buffer);
+    await worker.terminate();
+    return data.text;
 }
 
 /**
@@ -52,6 +55,6 @@ async function extractTextFromImage(buffer: Buffer): Promise<string> {
  * @returns Extracted text content.
  */
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  const data = await pdfParse(buffer);
-  return data.text;
+    const data = await pdfParse(buffer);
+    return data.text;
 }
