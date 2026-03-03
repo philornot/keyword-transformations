@@ -18,7 +18,7 @@
  */
 
 import type {ParsedKWTQuestion} from '../types.js';
-import { CANONICAL_GAP } from '../constants.js';
+import {CANONICAL_GAP} from '../constants.js';
 
 /**
  * Matches numbered exercise starts in both formats:
@@ -131,8 +131,12 @@ function splitIntoBlocks(lines: string[]): string[][] {
  * first sentence boundary — either just before a word that starts a new
  * clause, or at the end — so the editor always has a gap to show.
  *
+ * `minWords` and `maxWords` are intentionally left at 0 (no limit) because
+ * OCR cannot infer the intended word count from the source document.
+ * The editor allows the teacher to fill these in manually.
+ *
  * @param block - Lines belonging to one numbered question.
- * @returns Parsed question draft with empty answer arrays.
+ * @returns Parsed question draft with empty answer arrays and no word limit.
  */
 function parseBlock(block: string[]): ParsedKWTQuestion {
     const firstMatch = block[0].match(QUESTION_START_RE);
@@ -185,7 +189,8 @@ function parseBlock(block: string[]): ParsedKWTQuestion {
         correctAnswer: null,
         alternativeAnswers: [],
         exampleWrongAnswers: [],
-        maxWords: 5,
+        minWords: 0,
+        maxWords: 0,
     };
 }
 

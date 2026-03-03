@@ -39,8 +39,8 @@
             correctAnswer: null,
             alternativeAnswers: [],
             exampleWrongAnswers: [],
-            minWords: 2,
-            maxWords: 5,
+            minWords: 0,
+            maxWords: 0,
         });
     }
 

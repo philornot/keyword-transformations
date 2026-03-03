@@ -121,40 +121,87 @@
         }
     }
 
+    // ── Word range ──────────────────────────────────────────────────────
+
     /**
-     * Clamps a numeric input value to the given min/max range and writes it
-     * back to the question field.
+     * Formats minWords / maxWords into the single-field display string.
      *
-     * @param e - Native input event from a number input.
-     * @param field - Which question field to update ('minWords' | 'maxWords').
-     * @param lo - Minimum allowed value.
-     * @param hi - Maximum allowed value.
+     * Conventions used by this component:
+     *   0 / 0  → ''     (no limit)
+     *   0 / 5  → '5'    (max only)
+     *   2 / 5  → '2–5'  (explicit range)
+     *   n / n  → 'n'    (min === max → single number)
+     *
+     * @param min - Minimum word count; 0 means no minimum.
+     * @param max - Maximum word count; 0 means no maximum.
+     * @returns Human-readable string for the text input.
      */
-    function onWordCountInput(
-        e: Event,
-        field: 'minWords' | 'maxWords',
-        lo: number,
-        hi: number,
-    ) {
-        const raw = parseInt((e.currentTarget as HTMLInputElement).value, 10);
-        if (!Number.isFinite(raw)) return;
-        question[field] = Math.max(lo, Math.min(hi, raw));
+    function formatWordRange(min: number, max: number): string {
+        if (!max) return '';
+        if (!min || min <= 1 || min === max) return String(max);
+        return `${min}–${max}`;
     }
 
     /**
-     * Ensures minWords <= maxWords after the user leaves a word-count input.
-     * If the invariant is violated, the *other* field is nudged to match.
+     * Parses the word-range text field and writes the result back to the
+     * question object. Accepted formats:
+     *   ''       → minWords = 0, maxWords = 0  (no limit)
+     *   '5'      → minWords = 0, maxWords = 5  (max only)
+     *   '2-5'    → minWords = 2, maxWords = 5
+     *   '2–5'    → same (en-dash variant)
      *
-     * @param changed - Which field the user just edited.
+     * Invalid or out-of-range input is silently ignored — the previous
+     * values are kept and the display is normalised on blur.
+     *
+     * @param raw - Raw string value from the input element.
      */
-    function enforceWordCountOrder(changed: 'minWords' | 'maxWords') {
-        if (question.minWords > question.maxWords) {
-            if (changed === 'minWords') {
-                question.maxWords = question.minWords;
-            } else {
-                question.minWords = question.maxWords;
-            }
+    function applyWordRange(raw: string): void {
+        const val = raw.trim();
+
+        if (!val) {
+            question.minWords = 0;
+            question.maxWords = 0;
+            return;
         }
+
+        const rangeMatch = val.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+        if (rangeMatch) {
+            const lo = parseInt(rangeMatch[1], 10);
+            const hi = parseInt(rangeMatch[2], 10);
+            if (lo > 0 && hi > 0 && lo <= hi && hi <= 20) {
+                question.minWords = lo;
+                question.maxWords = hi;
+            }
+            return;
+        }
+
+        const single = parseInt(val, 10);
+        if (!isNaN(single) && single > 0 && single <= 20) {
+            question.minWords = 0;
+            question.maxWords = single;
+        }
+    }
+
+    /** Local display value; kept in sync with the question object. */
+    let wordRangeValue = $state(formatWordRange(question.minWords, question.maxWords));
+
+    /**
+     * Updates the question object on every keystroke.
+     *
+     * @param e - Native input event.
+     */
+    function onWordRangeInput(e: Event): void {
+        wordRangeValue = (e.currentTarget as HTMLInputElement).value;
+        applyWordRange(wordRangeValue);
+    }
+
+    /**
+     * Normalises the displayed string on blur (e.g. "2-5" → "2–5")
+     * and fires the touch callback.
+     */
+    function onWordRangeBlur(): void {
+        wordRangeValue = formatWordRange(question.minWords, question.maxWords);
+        onTouch?.();
     }
 </script>
 
@@ -237,37 +284,20 @@
             />
         </div>
 
-        <!-- Word range: two small number spinners side by side -->
+        <!-- Word range: single text input -->
         <div class="word-range-field">
-            <span class="field-label">{t('review.wordRange')}</span>
-            <div class="word-range-inputs">
-                <label class="sr-only" for="mw-min-{index}">{t('review.minWordsLabel')}</label>
-                <input
-                        id="mw-min-{index}"
-                        class="text-input word-count-input"
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={question.minWords}
-                        oninput={(e) => onWordCountInput(e, 'minWords', 1, 10)}
-                        onblur={() => { enforceWordCountOrder('minWords'); onTouch?.(); }}
-                        title={t('review.minWordsLabel')}
-                />
-                <span class="range-sep" aria-hidden="true">–</span>
-                <label class="sr-only" for="mw-max-{index}">{t('review.maxWordsLabel')}</label>
-                <input
-                        id="mw-max-{index}"
-                        class="text-input word-count-input"
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={question.maxWords}
-                        oninput={(e) => onWordCountInput(e, 'maxWords', 1, 10)}
-                        onblur={() => { enforceWordCountOrder('maxWords'); onTouch?.(); }}
-                        title={t('review.maxWordsLabel')}
-                />
-                <span class="range-unit">wyrazów</span>
-            </div>
+            <label class="field-label" for="wr-{index}">{t('review.wordRange')}</label>
+            <input
+                    id="wr-{index}"
+                    class="text-input word-range-input"
+                    type="text"
+                    value={wordRangeValue}
+                    oninput={onWordRangeInput}
+                    onblur={onWordRangeBlur}
+                    placeholder="np. 2–5 lub 5"
+                    title="Wpisz zakres (np. 2–5), samą max. liczbę (np. 5) lub zostaw puste — bez limitu"
+            />
+            <span class="range-hint">puste = bez limitu</span>
         </div>
     </div>
 
@@ -439,7 +469,7 @@
         gap: var(--space-1);
     }
 
-    /* ── Word range inputs ────────────────────────────────────────────── */
+    /* ── Word range single input ──────────────────────────────────────── */
     .word-range-field {
         display: flex;
         flex-direction: column;
@@ -447,50 +477,15 @@
         flex-shrink: 0;
     }
 
-    .word-range-inputs {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-    }
-
-    .word-count-input {
-        width: 56px;
+    .word-range-input {
+        width: 96px;
         text-align: center;
-        padding: var(--space-2) var(--space-1);
-        /* hide browser spinner arrows — we rely on direct typing */
-        appearance: textfield;
-        -moz-appearance: textfield;
     }
 
-    .word-count-input::-webkit-outer-spin-button,
-    .word-count-input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-
-    .range-sep {
-        font-weight: var(--font-weight-bold);
-        color: var(--color-text-muted);
-        font-size: var(--font-size-sm);
-    }
-
-    .range-unit {
+    .range-hint {
         font-size: var(--font-size-xs);
         color: var(--color-text-muted);
-        white-space: nowrap;
-    }
-
-    /* ── Visually hidden label (accessible) ──────────────────────────── */
-    .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
+        text-align: center;
     }
 
     /* ── Answer chip lists ────────────────────────────────────────────── */

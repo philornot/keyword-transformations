@@ -13,7 +13,9 @@ interface QuestionInput {
     correctAnswer: string;
     alternativeAnswers?: string[];
     exampleWrongAnswers?: string[];
+    /** Minimum word count; 0 means no minimum enforced. */
     minWords?: number;
+    /** Maximum word count; 0 means no maximum enforced. */
     maxWords: number;
 }
 
@@ -37,12 +39,15 @@ export const POST: RequestHandler = async ({request, cookies}) => {
         if (!q.sentence2WithGap?.includes('______')) throw error(400, `Q${i + 1}: sentence2WithGap must contain ______.`);
         if (!q.keyword?.trim()) throw error(400, `Q${i + 1}: keyword required.`);
         if (!q.correctAnswer?.trim()) throw error(400, `Q${i + 1}: correctAnswer required.`);
-        if (!Number.isInteger(q.maxWords) || q.maxWords < 1 || q.maxWords > 20) {
-            throw error(400, `Q${i + 1}: maxWords must be an integer between 1 and 20.`);
+
+        const maxWords = q.maxWords ?? 0;
+        if (!Number.isInteger(maxWords) || maxWords < 0 || maxWords > 20) {
+            throw error(400, `Q${i + 1}: maxWords must be an integer between 0 and 20 (0 = no limit).`);
         }
-        const minWords = q.minWords ?? 2;
-        if (!Number.isInteger(minWords) || minWords < 1 || minWords > q.maxWords) {
-            throw error(400, `Q${i + 1}: minWords must be an integer between 1 and maxWords.`);
+
+        const minWords = q.minWords ?? 0;
+        if (!Number.isInteger(minWords) || minWords < 0 || (maxWords > 0 && minWords > maxWords)) {
+            throw error(400, `Q${i + 1}: minWords must be between 0 and maxWords.`);
         }
     }
 
@@ -65,7 +70,7 @@ export const POST: RequestHandler = async ({request, cookies}) => {
         `);
 
         for (const [i, q] of questions.entries()) {
-            insertQuestion.run(setId, i + 1, q.sentence1.trim(), q.sentence2WithGap.trim(), q.keyword.trim().toUpperCase(), q.correctAnswer.trim(), JSON.stringify((q.alternativeAnswers ?? []).map((a) => a.trim()).filter(Boolean)), JSON.stringify((q.exampleWrongAnswers ?? []).map((a) => a.trim()).filter(Boolean)), q.minWords ?? 2, q.maxWords,);
+            insertQuestion.run(setId, i + 1, q.sentence1.trim(), q.sentence2WithGap.trim(), q.keyword.trim().toUpperCase(), q.correctAnswer.trim(), JSON.stringify((q.alternativeAnswers ?? []).map((a) => a.trim()).filter(Boolean)), JSON.stringify((q.exampleWrongAnswers ?? []).map((a) => a.trim()).filter(Boolean)), q.minWords ?? 0, q.maxWords ?? 0,);
         }
     })();
 

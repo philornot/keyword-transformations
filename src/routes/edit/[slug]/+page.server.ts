@@ -70,7 +70,8 @@ export const load: PageServerLoad = ({params, cookies}) => {
         correctAnswer: r.correct_answer,
         alternativeAnswers: JSON.parse(r.alternative_answers || '[]'),
         exampleWrongAnswers: JSON.parse(r.example_wrong_answers || '[]'),
-        maxWords: r.max_words as 3 | 4 | 5,
+        maxWords: r.max_words,
+        minWords: r.min_words ?? 0,
     }));
 
     return {

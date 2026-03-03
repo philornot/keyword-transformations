@@ -7,6 +7,9 @@
      * we warn the student but do not block submission. The check fires when
      * focus leaves the card that contains the gap input (focusout with
      * relatedTarget outside the card).
+     *
+     * When a question has maxWords = 0 the word-count feature is disabled
+     * entirely for that question (no hint shown, no warning fired).
      */
 
     import type {PageData} from './$types.js';
@@ -60,20 +63,27 @@
      * Validates the word count of the current answer for a question and
      * updates {@link wordCountWarnings} accordingly.
      *
+     * No-ops when `q.maxWords === 0` (question has no word-count limit).
      * Called on `focusout` from the card element so the warning only
      * appears once the student has finished with that question.
      *
      * @param q - The question whose answer is being validated.
      */
     function validateWordCount(q: PublicKWTQuestion) {
-        const raw = answers[q.id] ?? '';
-        if (!raw.trim()) {
-            // Empty answer — no word-count warning (the unanswered counter handles that).
+        // No limit configured for this question — nothing to check.
+        if (!q.maxWords) {
             wordCountWarnings[q.id] = null;
             return;
         }
+
+        const raw = answers[q.id] ?? '';
+        if (!raw.trim()) {
+            wordCountWarnings[q.id] = null;
+            return;
+        }
+
         const n = wordCount(raw);
-        if (n < q.minWords) {
+        if (q.minWords > 0 && n < q.minWords) {
             wordCountWarnings[q.id] = t('set.warnTooFew', {n, min: q.minWords});
         } else if (n > q.maxWords) {
             wordCountWarnings[q.id] = t('set.warnTooMany', {n, max: q.maxWords});
@@ -93,21 +103,20 @@
     function onCardFocusOut(e: FocusEvent, q: PublicKWTQuestion) {
         const card = e.currentTarget as HTMLElement;
         const next = e.relatedTarget as Node | null;
-        // relatedTarget is null when focus leaves the page entirely (e.g. alt-tab).
         if (!next || !card.contains(next)) {
             validateWordCount(q);
         }
     }
 
     /**
-     * Returns the word-range label for a question.
-     * Shows "X words" when min === max, otherwise "X–Y words".
+     * Returns the word-range label for a question, or null when no limit is set.
      *
      * @param q - The question.
-     * @returns Translated word-range string.
+     * @returns Translated word-range string or null.
      */
-    function wordRangeLabel(q: PublicKWTQuestion): string {
-        if (q.minWords === q.maxWords) {
+    function wordRangeLabel(q: PublicKWTQuestion): string | null {
+        if (!q.maxWords) return null;
+        if (!q.minWords || q.minWords <= 1 || q.minWords === q.maxWords) {
             return t('set.wordRangeExact', {max: q.maxWords});
         }
         return t('set.wordRange', {min: q.minWords, max: q.maxWords});
@@ -115,7 +124,6 @@
 
     /** Validates all answers' word counts before submitting and submits. */
     async function submit() {
-        // Run word-count validation for every question so warnings are visible.
         for (const q of data.set.questions as PublicKWTQuestion[]) {
             validateWordCount(q);
         }
@@ -179,8 +187,8 @@
                 {@const [before, after] = splitGap(q.sentence2WithGap)}
                 {@const filled = !!answers[q.id]?.trim()}
                 {@const warning = wordCountWarnings[q.id]}
+                {@const rangeLabel = wordRangeLabel(q)}
 
-                <!-- focusout fires on the card; we check if focus moved outside -->
                 <div
                         class="q-card card"
                         class:filled
@@ -190,7 +198,9 @@
                     <div class="q-meta">
                         <span class="q-pos">{q.position}.</span>
                         <span class="keyword">{t('set.keyword')} <strong>{q.keyword}</strong></span>
-                        <span class="max-words">{wordRangeLabel(q)}</span>
+                        {#if rangeLabel}
+                            <span class="max-words">{rangeLabel}</span>
+                        {/if}
                     </div>
 
                     <p class="sentence1">{q.sentence1}</p>
@@ -299,7 +309,6 @@
         border-color: #c3fae8;
     }
 
-    /* Warning state overrides the filled green border */
     .q-card.has-warning {
         border-color: var(--color-warning);
     }
@@ -392,7 +401,6 @@
         font-size: var(--font-size-sm);
     }
 
-    /* ── Word count warning ───────────────────────────────────────────── */
     .word-count-warning {
         display: flex;
         align-items: center;
