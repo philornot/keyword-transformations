@@ -2,25 +2,17 @@
     /**
      * /create/scan — file upload page with OCR processing.
      *
-     * The exercise type is pre-selected via `?type=` URL param (set by the
-     * nav tabs). It is shown as a badge and passed to both the client-side
-     * text parser and the reviewState store so /review knows which type
-     * to pre-select and which parser output to expect.
-     *
-     * Supports three input methods:
-     *  1. Drag & drop a file onto the drop zone.
-     *  2. Click "Browse files" and pick a file from disk.
-     *  3. Ctrl+V anywhere on the page:
-     *     - clipboard image → stored as the selected file, then OCR'd normally.
-     *     - clipboard text  → parsed immediately client-side, skip OCR.
+     * Reads the active exercise mode from the global `mode` store set by
+     * the nav tabs. Parsing (both OCR and clipboard text) always uses that
+     * mode so the correct question structure is produced.
      */
 
     import {goto} from '$app/navigation';
     import {reviewState} from '$lib/store.svelte.js';
+    import {mode} from '$lib/mode.svelte.js';
     import {t} from '$lib/i18n.svelte.js';
     import {parseQuestions} from '$lib/parser.js';
     import type {UploadResponse} from '$lib/types.js';
-    import type {ExerciseType} from '$lib/constants.js';
     import {
         CircleNotchIcon,
         ClipboardIcon,
@@ -35,16 +27,10 @@
     const MAX_MB = 20;
     const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
-    let {data} = $props();
-
-    /** Exercise type forwarded from the URL param via the server load. */
-    const exerciseType = $derived(data.initialType as ExerciseType);
-
     let isDragging = $state(false);
     let isProcessing = $state(false);
     let errorMessage = $state('');
     let selectedFile = $state<File | null>(null);
-    /** True when the selected file came from a clipboard image paste. */
     let pastedImage = $state(false);
 
     /**
@@ -89,11 +75,7 @@
     }
 
     /**
-     * Global Ctrl+V handler.
-     *  - Image in clipboard → store as `selectedFile`; user clicks "Detect".
-     *  - Plain text in clipboard → run client-side parser immediately using
-     *    the active `exerciseType` and navigate to /review.
-     *
+     * Global Ctrl+V handler. Uses the current `mode.type` for parsing.
      * Pastes originating inside an input or textarea are ignored.
      *
      * @param e - The window-level ClipboardEvent.
@@ -120,17 +102,15 @@
 
         isProcessing = true;
         try {
-            const questions = parseQuestions(text, exerciseType);
+            const questions = parseQuestions(text, mode.type);
             if (questions.length === 0) {
-                errorMessage =
-                    'Nie udało się wykryć żadnych pytań w wklejonym tekście. ' +
-                    'Sprawdź format lub utwórz zestaw ręcznie.';
+                errorMessage = 'Nie udało się wykryć żadnych pytań w wklejonym tekście. Sprawdź format lub utwórz zestaw ręcznie.';
                 return;
             }
             reviewState.questions = questions;
             reviewState.rawText = text;
             reviewState.title = '';
-            reviewState.type = exerciseType;
+            reviewState.type = mode.type;
             await goto('/review');
         } finally {
             isProcessing = false;
@@ -154,11 +134,9 @@
         if (!selectedFile) return;
         isProcessing = true;
         errorMessage = '';
-
         try {
             const fd = new FormData();
             fd.append('file', selectedFile);
-
             const res = await fetch('/api/upload', {method: 'POST', body: fd});
 
             if (!res.ok) {
@@ -172,42 +150,44 @@
             }
 
             const data: UploadResponse = await res.json();
-
-            // Re-parse the raw OCR text with the correct exercise-type parser
-            // instead of trusting the server-side default (which is always KWT).
-            const questions = parseQuestions(data.rawText, exerciseType);
+            // Parse using the active mode — the server always returns rawText
+            // but does not know which exercise type the user selected.
+            const questions = parseQuestions(data.rawText, mode.type);
 
             if (questions.length === 0) {
-                errorMessage =
-                    'Nie udało się wykryć żadnych pytań w tym pliku. ' +
-                    'Sprawdź jakość zdjęcia lub utwórz zestaw ręcznie.';
+                errorMessage = 'Nie udało się wykryć żadnych pytań w tym pliku. Sprawdź jakość zdjęcia lub utwórz zestaw ręcznie.';
                 return;
             }
 
             reviewState.questions = questions;
             reviewState.rawText = data.rawText;
             reviewState.title = selectedFile.name.replace(/\.[^.]+$/, '');
-            reviewState.type = exerciseType;
+            reviewState.type = mode.type;
             await goto('/review');
-
         } catch (err) {
             errorMessage = err instanceof Error ? err.message : 'Nieznany błąd. Spróbuj ponownie.';
         } finally {
             isProcessing = false;
         }
     }
+
+    const typeLabels: Record<string, string> = {
+        kwt: 'KWT',
+        grammar: 'Gramatykalizacja',
+        translation: 'Tłumaczenia',
+    };
 </script>
 
 <svelte:window onpaste={onGlobalPaste}/>
 
 <svelte:head>
-    <title>{t('scan.title')} — {t(`exerciseType.${exerciseType}`)} — Key word transformations</title>
+    <title>{t('scan.title')} — {typeLabels[mode.type]} — Key word transformations</title>
 </svelte:head>
 
 <div class="scan-page">
     <div class="page-title-row">
         <h1>{t('scan.title')}</h1>
-        <span class="type-badge">{t(`exerciseType.${exerciseType}`)}</span>
+        <span class="type-badge">{typeLabels[mode.type]}</span>
     </div>
     <p class="subtitle">{t('scan.subtitle')}</p>
 

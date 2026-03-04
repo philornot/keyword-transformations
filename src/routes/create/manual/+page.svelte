@@ -1,18 +1,17 @@
 <script lang="ts">
     /**
-     * @fileoverview /create/manual — manual exercise-set editor.
+     * /create/manual — manual exercise-set editor.
      *
-     * Supports three exercise types (kwt / grammar / translation) selected
-     * via the `?type` URL param, which is forwarded by the page server load.
-     * The type controls which fields are shown in each question card and
-     * which fields are required for validation.
+     * Reads the exercise type from the global `mode` store — the same store
+     * the nav tabs write to. Switching tabs while on this page instantly
+     * updates the type badge and validation rules without any navigation.
      */
 
     import {goto} from '$app/navigation';
     import {t} from '$lib/i18n.svelte.js';
+    import {mode} from '$lib/mode.svelte.js';
     import KwtQuestionEditor from '$lib/components/KwtQuestionEditor.svelte';
     import type {ParsedKWTQuestion} from '$lib/types.js';
-    import type {ExerciseType} from '$lib/constants.js';
     import {CircleNotchIcon, PlusIcon, RocketLaunchIcon} from 'phosphor-svelte';
 
     interface DraftQuestion extends ParsedKWTQuestion {
@@ -21,12 +20,9 @@
 
     const GAP = '______';
 
-    let {data} = $props();
-
     let nextKey = 0;
     let title = $state('');
     let sourceLabel = $state('');
-    let setType = $state<ExerciseType>(data.initialType);
     let questions = $state<DraftQuestion[]>([]);
     let isPublishing = $state(false);
     let errorMessage = $state('');
@@ -67,15 +63,15 @@
 
     /**
      * Returns a validation error for a question, or null if valid.
-     * Sentence1 and keyword are only required for the 'kwt' type.
+     * sentence1 and keyword are only required for 'kwt' mode.
      *
      * @param q - The draft question to validate.
      * @returns Error message string or null.
      */
     function questionError(q: DraftQuestion): string | null {
-        if (setType === 'kwt' && !q.sentence1.trim()) return t('review.errSentence1');
+        if (mode.type === 'kwt' && !q.sentence1.trim()) return t('review.errSentence1');
         if (!q.sentence2WithGap.includes(GAP)) return t('review.errSentence2');
-        if (setType === 'kwt' && !q.keyword.trim()) return t('review.errKeyword');
+        if (mode.type === 'kwt' && !q.keyword.trim()) return t('review.errKeyword');
         if (!q.correctAnswer?.trim()) return t('review.errAnswer');
         return null;
     }
@@ -111,7 +107,7 @@
                 body: JSON.stringify({
                     title: title.trim(),
                     sourceLabel: sourceLabel.trim() || undefined,
-                    type: setType,
+                    type: mode.type,
                     questions: questions.map((q) => ({
                         sentence1: q.sentence1.trim(),
                         sentence2WithGap: q.sentence2WithGap.trim(),
@@ -126,12 +122,10 @@
             });
 
             const body = await res.json();
-
             if (!res.ok) {
                 errorMessage = body.error ?? 'Failed.';
                 return;
             }
-
             await goto(`/set/${body.slug}`);
         } catch (err) {
             errorMessage = err instanceof Error ? err.message : 'Unknown error.';
@@ -139,10 +133,16 @@
             isPublishing = false;
         }
     }
+
+    const typeLabels: Record<string, string> = {
+        kwt: 'KWT',
+        grammar: 'Gramatykalizacja',
+        translation: 'Tłumaczenia',
+    };
 </script>
 
 <svelte:head>
-    <title>{t('manual.title')} — {t(`exerciseType.${setType}`)} — Key word transformations</title>
+    <title>{t('manual.title')} — {typeLabels[mode.type]} — Key word transformations</title>
 </svelte:head>
 
 <div class="page">
@@ -150,7 +150,7 @@
         <div>
             <h1>
                 {t('manual.title')}
-                <span class="type-label">{t(`exerciseType.${setType}`)}</span>
+                <span class="type-label">{typeLabels[mode.type]}</span>
             </h1>
             <p class="subtitle">{t('manual.subtitle')}</p>
         </div>
@@ -198,7 +198,7 @@
                 <KwtQuestionEditor
                         bind:question={questions[i]}
                         index={i}
-                        {setType}
+                        setType={mode.type}
                         error={visibleError(q)}
                         onRemove={() => questions = questions.filter((qq) => qq._key !== q._key)}
                         onTouch={() => touch(q._key)}
@@ -243,7 +243,6 @@
         color: var(--color-surface);
         padding: var(--space-1) var(--space-3);
         border-radius: var(--radius-full);
-        vertical-align: middle;
     }
 
     .subtitle {
