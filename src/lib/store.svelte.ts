@@ -5,15 +5,19 @@
  * browser session. A page refresh resets it — that is intentional.
  */
 
-import type { ParsedKWTQuestion } from './types.js';
+import type {ParsedKWTQuestion} from './types.js';
+import type {ExerciseType} from './constants.js';
 
 /** Mutable reactive state for the question-review workflow. */
 export const reviewState = $state<{
-  questions: ParsedKWTQuestion[];
-  rawText: string;
-  title: string;
+    questions: ParsedKWTQuestion[];
+    rawText: string;
+    title: string;
+    /** Exercise type selected by the user before scanning. */
+    type: ExerciseType;
 }>({
-  questions: [],
-  rawText: '',
-  title: '',
+    questions: [],
+    rawText: '',
+    title: '',
+    type: 'kwt',
 });

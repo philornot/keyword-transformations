@@ -2,6 +2,11 @@
     /**
      * /create/scan — file upload page with OCR processing.
      *
+     * The exercise type is pre-selected via `?type=` URL param (set by the
+     * nav tabs). It is shown as a badge and passed to both the client-side
+     * text parser and the reviewState store so /review knows which type
+     * to pre-select and which parser output to expect.
+     *
      * Supports three input methods:
      *  1. Drag & drop a file onto the drop zone.
      *  2. Click "Browse files" and pick a file from disk.
@@ -15,6 +20,7 @@
     import {t} from '$lib/i18n.svelte.js';
     import {parseQuestions} from '$lib/parser.js';
     import type {UploadResponse} from '$lib/types.js';
+    import type {ExerciseType} from '$lib/constants.js';
     import {
         CircleNotchIcon,
         ClipboardIcon,
@@ -28,6 +34,11 @@
 
     const MAX_MB = 20;
     const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+    let {data} = $props();
+
+    /** Exercise type forwarded from the URL param via the server load. */
+    const exerciseType = $derived(data.initialType as ExerciseType);
 
     let isDragging = $state(false);
     let isProcessing = $state(false);
@@ -78,12 +89,12 @@
     }
 
     /**
-     * Global Ctrl+V handler. Two paths:
+     * Global Ctrl+V handler.
      *  - Image in clipboard → store as `selectedFile`; user clicks "Detect".
-     *  - Plain text in clipboard → run client-side parser immediately and
-     *    navigate to /review without any server round-trip.
+     *  - Plain text in clipboard → run client-side parser immediately using
+     *    the active `exerciseType` and navigate to /review.
      *
-     * Pastes that originate inside an input or textarea are ignored.
+     * Pastes originating inside an input or textarea are ignored.
      *
      * @param e - The window-level ClipboardEvent.
      */
@@ -93,7 +104,6 @@
 
         errorMessage = '';
 
-        // ── Image ───────────────────────────────────────────────────────
         const imageItem = Array.from(e.clipboardData?.items ?? []).find(
             (item) => item.type.startsWith('image/'),
         );
@@ -105,22 +115,22 @@
             return;
         }
 
-        // ── Plain text ──────────────────────────────────────────────────
         const text = e.clipboardData?.getData('text/plain') ?? '';
         if (!text.trim()) return;
 
         isProcessing = true;
         try {
-            const questions = parseQuestions(text);
+            const questions = parseQuestions(text, exerciseType);
             if (questions.length === 0) {
                 errorMessage =
-                    'Nie udało się wykryć żadnych pytań KWT w wklejonym tekście. ' +
+                    'Nie udało się wykryć żadnych pytań w wklejonym tekście. ' +
                     'Sprawdź format lub utwórz zestaw ręcznie.';
                 return;
             }
             reviewState.questions = questions;
             reviewState.rawText = text;
             reviewState.title = '';
+            reviewState.type = exerciseType;
             await goto('/review');
         } finally {
             isProcessing = false;
@@ -163,16 +173,21 @@
 
             const data: UploadResponse = await res.json();
 
-            if (data.questions.length === 0) {
+            // Re-parse the raw OCR text with the correct exercise-type parser
+            // instead of trusting the server-side default (which is always KWT).
+            const questions = parseQuestions(data.rawText, exerciseType);
+
+            if (questions.length === 0) {
                 errorMessage =
-                    'Nie udało się wykryć żadnych pytań KWT w tym pliku. ' +
+                    'Nie udało się wykryć żadnych pytań w tym pliku. ' +
                     'Sprawdź jakość zdjęcia lub utwórz zestaw ręcznie.';
                 return;
             }
 
-            reviewState.questions = data.questions;
+            reviewState.questions = questions;
             reviewState.rawText = data.rawText;
             reviewState.title = selectedFile.name.replace(/\.[^.]+$/, '');
+            reviewState.type = exerciseType;
             await goto('/review');
 
         } catch (err) {
@@ -186,11 +201,14 @@
 <svelte:window onpaste={onGlobalPaste}/>
 
 <svelte:head>
-    <title>{t('scan.title')} — Key word transformations</title>
+    <title>{t('scan.title')} — {t(`exerciseType.${exerciseType}`)} — Key word transformations</title>
 </svelte:head>
 
 <div class="scan-page">
-    <h1>{t('scan.title')}</h1>
+    <div class="page-title-row">
+        <h1>{t('scan.title')}</h1>
+        <span class="type-badge">{t(`exerciseType.${exerciseType}`)}</span>
+    </div>
     <p class="subtitle">{t('scan.subtitle')}</p>
 
     {#if !selectedFile && !isProcessing}
@@ -287,9 +305,26 @@
         gap: var(--space-5);
     }
 
+    .page-title-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        flex-wrap: wrap;
+    }
+
     h1 {
         font-size: var(--font-size-3xl);
         font-weight: var(--font-weight-extrabold);
+    }
+
+    .type-badge {
+        background: var(--color-primary);
+        color: var(--color-surface);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-bold);
+        padding: var(--space-1) var(--space-3);
+        border-radius: var(--radius-full);
+        letter-spacing: var(--letter-spacing-wide);
     }
 
     .subtitle {
@@ -298,7 +333,6 @@
         margin-top: calc(-1 * var(--space-3));
     }
 
-    /* ── Paste hint ───────────────────────────────────────────────────── */
     .paste-hint {
         display: flex;
         align-items: baseline;
@@ -332,7 +366,6 @@
         vertical-align: baseline;
     }
 
-    /* ── Drop zone ────────────────────────────────────────────────────── */
     .drop-zone {
         min-height: 210px;
         border: 2px dashed var(--color-border);
@@ -378,7 +411,6 @@
         margin-top: var(--space-1);
     }
 
-    /* ── File preview ─────────────────────────────────────────────────── */
     .file-preview {
         display: flex;
         align-items: center;
@@ -414,7 +446,6 @@
         flex-shrink: 0;
     }
 
-    /* ── Processing text (for text-paste path) ────────────────────────── */
     .processing-text {
         display: flex;
         align-items: center;
@@ -423,7 +454,6 @@
         font-size: var(--font-size-sm);
     }
 
-    /* ── Error banner ─────────────────────────────────────────────────── */
     .error-banner {
         display: flex;
         align-items: flex-start;
@@ -437,7 +467,6 @@
         line-height: var(--line-height-snug);
     }
 
-    /* ── Actions ──────────────────────────────────────────────────────── */
     .actions {
         display: flex;
         justify-content: flex-end;
