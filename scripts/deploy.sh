@@ -1,167 +1,205 @@
 #!/usr/bin/env bash
 # =============================================================================
-# setup.sh — one-time project setup
+# deploy.sh — build locally and deploy to the remote
 #
-# Does two things:
-#   1. Walks you through filling in deploy.config.yaml interactively.
-#   2. Connects to the remote and bootstraps it (installs Bun, PM2,
-#      creates directories, writes the .env file).
+# Usage:
+#   bash scripts/deploy.sh          # full deploy (build + sync + restart)
+#   bash scripts/deploy.sh --sync   # skip build, just rsync + restart
+#   bash scripts/deploy.sh --check  # dry-run: show what would be sent
 #
 # Requirements (local machine):
-#   yq  ≥ 4.x  — https://github.com/mikefarah/yq
-#     macOS:   brew install yq
-#     Windows: winget install MikeFarah.yq   (run in Git Bash / WSL)
-#     Linux:   snap install yq
+#   yq  >= 4.x  — https://github.com/mikefarah/yq
+#   bun        — https://bun.sh
+#   rsync
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG="$SCRIPT_DIR/../deploy.config.yaml"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CONFIG="$PROJECT_ROOT/deploy.config.yaml"
+
+# ── Parse flags ───────────────────────────────────────────────────────────────
+
+SKIP_BUILD=false
+DRY_RUN=false
+
+for arg in "$@"; do
+    case $arg in
+        --sync)  SKIP_BUILD=true ;;
+        --check) DRY_RUN=true; SKIP_BUILD=true ;;
+    esac
+done
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+RED='\033[0;31m'
 RESET='\033[0m'
 
-info()    { echo -e "${CYAN}[setup]${RESET} $*"; }
-success() { echo -e "${GREEN}[setup]${RESET} $*"; }
-warn()    { echo -e "${YELLOW}[setup]${RESET} $*"; }
+info()    { echo -e "${CYAN}[deploy]${RESET} $*"; }
+success() { echo -e "${GREEN}[deploy]${RESET} $*"; }
+warn()    { echo -e "${YELLOW}[deploy]${RESET} $*"; }
+die()     { echo -e "${RED}[deploy] ERROR:${RESET} $*" >&2; exit 1; }
 
-# Read current value from config.
 cfg_get() { yq e ".$1" "$CONFIG"; }
-
-# Write a value to config.
-cfg_set() { yq e ".$1 = \"$2\"" -i "$CONFIG"; }
-
-# Prompt user; if they press Enter use the current config value as default.
-prompt() {
-    local key="$1"
-    local label="$2"
-    local current
-    current="$(cfg_get "$key")"
-
-    if [[ -n "$current" && "$current" != "null" && "$current" != '""' ]]; then
-        read -rp "  $label [$current]: " value
-        value="${value:-$current}"
-    else
-        read -rp "  $label: " value
-    fi
-
-    cfg_set "$key" "$value"
-    echo "$value"
-}
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
 
-if ! command -v yq &>/dev/null; then
-    echo "ERROR: yq is not installed."
+command -v yq    &>/dev/null || die "yq not found. See scripts/setup.sh for install instructions."
+command -v bun   &>/dev/null || die "bun not found. Install from https://bun.sh"
+command -v rsync &>/dev/null || die "rsync not found."
+
+[[ -f "$CONFIG" ]] || die "deploy.config.yaml not found. Run scripts/setup.sh first."
+
+# ── Read config ───────────────────────────────────────────────────────────────
+
+SSH_ALIAS=$(cfg_get    "remote.ssh_alias")
+DEPLOY_PATH=$(cfg_get  "remote.deploy_path")
+DATA_PATH=$(cfg_get    "remote.data_path")
+PM2_NAME=$(cfg_get     "project.name")
+RUNTIME=$(cfg_get      "remote.runtime")
+BACKUP_ENABLED=$(cfg_get  "backup.enabled")
+BACKUP_KEEP_DAYS=$(cfg_get "backup.keep_days")
+ORIGIN=$(cfg_get       "app.origin")
+
+[[ -z "$SSH_ALIAS"   || "$SSH_ALIAS"   == "null" ]] && die "remote.ssh_alias not set. Run scripts/setup.sh."
+[[ -z "$DEPLOY_PATH" || "$DEPLOY_PATH" == "null" ]] && die "remote.deploy_path not set. Run scripts/setup.sh."
+
+# Default to node if runtime was never written to config (safety fallback).
+RUNTIME="${RUNTIME:-node}"
+[[ "$RUNTIME" == "null" ]] && RUNTIME="node"
+
+# ── Start ─────────────────────────────────────────────────────────────────────
+
+echo ""
+echo -e "${CYAN}══════════════════════════════════════════${RESET}"
+echo -e "${CYAN}  KWT — deploying to $SSH_ALIAS ($RUNTIME)${RESET}"
+echo -e "${CYAN}══════════════════════════════════════════${RESET}"
+echo ""
+
+cd "$PROJECT_ROOT"
+
+# ── Step 1: Build ─────────────────────────────────────────────────────────────
+
+if [[ "$SKIP_BUILD" == false ]]; then
+    info "Building..."
+    bun run build
+    success "Build complete."
     echo ""
-    echo "Install it first:"
-    echo "  macOS:   brew install yq"
-    echo "  Windows: winget install MikeFarah.yq  (then restart your shell)"
-    echo "  Linux:   snap install yq"
-    exit 1
 fi
 
-if [[ ! -f "$CONFIG" ]]; then
-    echo "ERROR: $CONFIG not found. Run this script from the project root."
-    exit 1
+# ── Step 2: Backup database ───────────────────────────────────────────────────
+
+if [[ "$BACKUP_ENABLED" == "true" && "$DRY_RUN" == false ]]; then
+    info "Backing up database on remote..."
+    ssh "$SSH_ALIAS" /bin/bash << REMOTE
+set -euo pipefail
+DB="${DATA_PATH}/worksheet.db"
+BACKUP_DIR="${DATA_PATH}/backups"
+mkdir -p "\$BACKUP_DIR"
+if [[ -f "\$DB" ]]; then
+    STAMP=\$(date +%Y%m%d_%H%M%S)
+    cp "\$DB" "\$BACKUP_DIR/worksheet_\${STAMP}.db"
+    echo "[remote] Backup saved: worksheet_\${STAMP}.db"
+    find "\$BACKUP_DIR" -name "worksheet_*.db" -mtime +${BACKUP_KEEP_DAYS} -delete
+    echo "[remote] Old backups (>${BACKUP_KEEP_DAYS}d) cleaned up."
+else
+    echo "[remote] No database found yet — skipping backup."
+fi
+REMOTE
+    echo ""
 fi
 
-# ── Step 1: fill in deploy.config.yaml ───────────────────────────────────────
+# ── Step 3: Rsync ─────────────────────────────────────────────────────────────
 
-echo ""
-echo -e "${CYAN}══════════════════════════════════════════${RESET}"
-echo -e "${CYAN}  KWT — deployment setup${RESET}"
-echo -e "${CYAN}══════════════════════════════════════════${RESET}"
-echo ""
-info "Filling in deploy.config.yaml — press Enter to keep the current value."
+RSYNC_OPTS=(-av --progress --delete)
+[[ "$DRY_RUN" == true ]] && RSYNC_OPTS+=(--dry-run)
+
+info "Syncing files to $SSH_ALIAS:$DEPLOY_PATH..."
 echo ""
 
-SSH_ALIAS=$(prompt "remote.ssh_alias"   "SSH alias (e.g. frpi4 or pi@192.168.1.10)")
-DEPLOY_PATH=$(prompt "remote.deploy_path" "Remote deploy directory")
-DATA_PATH=$(prompt  "remote.data_path"  "Remote data directory (database lives here)")
-PORT=$(prompt       "app.port"           "Application port")
-ORIGIN=$(prompt     "app.origin"         "Public URL (e.g. https://kwt.example.com)")
+rsync "${RSYNC_OPTS[@]}" \
+    --exclude='.env' \
+    --exclude='node_modules' \
+    --exclude='.git' \
+    --exclude='data/' \
+    build \
+    package.json \
+    bun.lock \
+    "$SSH_ALIAS:$DEPLOY_PATH/"
 
 echo ""
-warn "The admin password is stored in deploy.config.yaml in plain text."
-warn "Make sure this file is in your .gitignore."
-ADMIN_PW=$(prompt "app.admin_password" "Admin panel password (leave empty to disable)")
 
-echo ""
-success "deploy.config.yaml updated."
-
-# ── Step 2: make sure .gitignore protects the config ─────────────────────────
-
-GITIGNORE="$SCRIPT_DIR/../.gitignore"
-if ! grep -q "deploy.config.yaml" "$GITIGNORE" 2>/dev/null; then
-    echo "" >> "$GITIGNORE"
-    echo "# Deployment config contains secrets" >> "$GITIGNORE"
-    echo "deploy.config.yaml" >> "$GITIGNORE"
-    warn "Added deploy.config.yaml to .gitignore."
-fi
-
-# ── Step 3: bootstrap the remote ─────────────────────────────────────────────
-
-echo ""
-read -rp "Bootstrap the remote server now? [Y/n]: " do_bootstrap
-do_bootstrap="${do_bootstrap:-Y}"
-
-if [[ ! "$do_bootstrap" =~ ^[Yy]$ ]]; then
-    success "Skipping remote bootstrap. Run 'bash scripts/setup.sh' again when ready."
+if [[ "$DRY_RUN" == true ]]; then
+    warn "Dry run — nothing was changed on the remote."
     exit 0
 fi
 
-info "Connecting to $SSH_ALIAS…"
+# ── Step 4: Install deps + restart ───────────────────────────────────────────
 
-ssh "$SSH_ALIAS" bash << REMOTE
+info "Installing production dependencies and restarting on remote..."
+
+if [[ "$RUNTIME" == "bun" ]]; then
+
+ssh "$SSH_ALIAS" /bin/bash << REMOTE
 set -euo pipefail
+export PATH="\$HOME/.bun/bin:\$PATH"
 
-echo ""
-echo "[remote] Creating directories…"
-mkdir -p "$DEPLOY_PATH" "$DATA_PATH"
+cd "${DEPLOY_PATH}"
+bun install --production --frozen-lockfile
 
-echo "[remote] Installing Bun…"
-if command -v bun &>/dev/null; then
-    echo "[remote] Bun already installed: \$(bun --version)"
+if pm2 describe "${PM2_NAME}" &>/dev/null; then
+    pm2 restart "${PM2_NAME}"
+    echo "[remote] PM2 process '${PM2_NAME}' restarted."
 else
-    curl -fsSL https://bun.sh/install | bash
-    # Make bun available in this session
-    export BUN_INSTALL="\$HOME/.bun"
-    export PATH="\$BUN_INSTALL/bin:\$PATH"
-    echo "[remote] Bun installed: \$(bun --version)"
+    pm2 start --interpreter bun --name "${PM2_NAME}" -- build/index.js
+    pm2 save
+    echo "[remote] PM2 process '${PM2_NAME}' started and saved."
 fi
-
-export BUN_INSTALL="\$HOME/.bun"
-export PATH="\$BUN_INSTALL/bin:\$PATH"
-
-echo "[remote] Installing PM2…"
-if command -v pm2 &>/dev/null; then
-    echo "[remote] PM2 already installed: \$(pm2 --version)"
-else
-    bun install -g pm2
-    echo "[remote] PM2 installed."
-fi
-
-echo "[remote] Writing .env…"
-cat > "$DEPLOY_PATH/.env" << 'ENV'
-ADMIN_PASSWORD=$ADMIN_PW
-ORIGIN=$ORIGIN
-PORT=$PORT
-DATA_DIR=$DATA_PATH
-ENV
-
-echo "[remote] .env written to $DEPLOY_PATH/.env"
-echo ""
-echo "[remote] Bootstrap complete."
 REMOTE
 
+else
+
+ssh "$SSH_ALIAS" /bin/bash << REMOTE
+set -euo pipefail
+export NVM_DIR="\$HOME/.nvm"
+source "\$NVM_DIR/nvm.sh"
+
+cd "${DEPLOY_PATH}"
+npm install --omit=dev --frozen-lockfile
+
+if pm2 describe "${PM2_NAME}" &>/dev/null; then
+    pm2 restart "${PM2_NAME}"
+    echo "[remote] PM2 process '${PM2_NAME}' restarted."
+else
+    pm2 start --name "${PM2_NAME}" build/index.js
+    pm2 save
+    echo "[remote] PM2 process '${PM2_NAME}' started and saved."
+fi
+REMOTE
+
+fi
+
 echo ""
-success "Remote is ready."
-echo ""
-info "Next step: run 'bash scripts/deploy.sh' to build and deploy the app."
+success "Deploy complete."
+
+# ── Step 5: Health check ──────────────────────────────────────────────────────
+
+if [[ -n "$ORIGIN" && "$ORIGIN" != "null" && "$ORIGIN" != '""' ]]; then
+    info "Checking $ORIGIN ..."
+    sleep 2
+    HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}" --max-time 10 "$ORIGIN" || echo "000")
+    if [[ "$HTTP_CODE" == "200" ]]; then
+        success "App is up — HTTP $HTTP_CODE"
+    else
+        warn "App returned HTTP $HTTP_CODE — check logs: ssh $SSH_ALIAS 'pm2 logs ${PM2_NAME}'"
+    fi
+else
+    info "No origin set — skipping health check."
+    info "Check logs: ssh $SSH_ALIAS 'pm2 logs ${PM2_NAME}'"
+fi
+
 echo ""

@@ -4,11 +4,15 @@
 #
 # Does two things:
 #   1. Walks you through filling in deploy.config.yaml interactively.
-#   2. Connects to the remote and bootstraps it (installs Bun, PM2,
+#   2. Connects to the remote and bootstraps it (installs runtime, PM2,
 #      creates directories, writes the .env file).
 #
+# Runtime selection (auto-detected on the remote):
+#   aarch64 / x86_64  → Bun
+#   armv7l            → Node.js 20 LTS (Bun does not support 32-bit ARM)
+#
 # Requirements (local machine):
-#   yq  ≥ 4.x  — https://github.com/mikefarah/yq
+#   yq  >= 4.x  — https://github.com/mikefarah/yq
 #     macOS:   brew install yq
 #     Windows: winget install MikeFarah.yq   (run in Git Bash / WSL)
 #     Linux:   snap install yq
@@ -30,13 +34,9 @@ info()    { echo -e "${CYAN}[setup]${RESET} $*"; }
 success() { echo -e "${GREEN}[setup]${RESET} $*"; }
 warn()    { echo -e "${YELLOW}[setup]${RESET} $*"; }
 
-# Read current value from config.
 cfg_get() { yq e ".$1" "$CONFIG"; }
-
-# Write a value to config.
 cfg_set() { yq e ".$1 = \"$2\"" -i "$CONFIG"; }
 
-# Prompt user; if they press Enter use the current config value as default.
 prompt() {
     local key="$1"
     local label="$2"
@@ -81,11 +81,11 @@ echo ""
 info "Filling in deploy.config.yaml — press Enter to keep the current value."
 echo ""
 
-SSH_ALIAS=$(prompt "remote.ssh_alias"   "SSH alias (e.g. rpi or pi@192.168.1.10)")
+SSH_ALIAS=$(prompt   "remote.ssh_alias"   "SSH alias (e.g. frpi4 or pi@192.168.1.10)")
 DEPLOY_PATH=$(prompt "remote.deploy_path" "Remote deploy directory")
-DATA_PATH=$(prompt  "remote.data_path"  "Remote data directory (database lives here)")
-PORT=$(prompt       "app.port"           "Application port")
-ORIGIN=$(prompt     "app.origin"         "Public URL (e.g. https://kwt.example.com)")
+DATA_PATH=$(prompt   "remote.data_path"   "Remote data directory (database lives here)")
+PORT=$(prompt        "app.port"           "Application port")
+ORIGIN=$(prompt      "app.origin"         "Public URL (e.g. https://kwt.example.com)")
 
 echo ""
 warn "The admin password is stored in deploy.config.yaml in plain text."
@@ -95,7 +95,7 @@ ADMIN_PW=$(prompt "app.admin_password" "Admin panel password (leave empty to dis
 echo ""
 success "deploy.config.yaml updated."
 
-# ── Step 2: make sure .gitignore protects the config ─────────────────────────
+# ── Step 2: protect the config ───────────────────────────────────────────────
 
 GITIGNORE="$SCRIPT_DIR/../.gitignore"
 if ! grep -q "deploy.config.yaml" "$GITIGNORE" 2>/dev/null; then
@@ -105,7 +105,7 @@ if ! grep -q "deploy.config.yaml" "$GITIGNORE" 2>/dev/null; then
     warn "Added deploy.config.yaml to .gitignore."
 fi
 
-# ── Step 3: bootstrap the remote ─────────────────────────────────────────────
+# ── Step 3: detect remote architecture and bootstrap ─────────────────────────
 
 echo ""
 read -rp "Bootstrap the remote server now? [Y/n]: " do_bootstrap
@@ -116,52 +116,115 @@ if [[ ! "$do_bootstrap" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-info "Connecting to $SSH_ALIAS…"
+info "Detecting remote architecture..."
+ARCH=$(ssh "$SSH_ALIAS" 'getconf LONG_BIT')
+info "Remote architecture: $ARCH"
 
-ssh "$SSH_ALIAS" bash << REMOTE
-set -euo pipefail
-
-echo ""
-echo "[remote] Creating directories…"
-mkdir -p "$DEPLOY_PATH" "$DATA_PATH"
-
-echo "[remote] Installing Bun…"
-if command -v bun &>/dev/null; then
-    echo "[remote] Bun already installed: \$(bun --version)"
+if [[ "$ARCH" == "64" ]]; then
+    RUNTIME="bun"
+    cfg_set "remote.runtime" "bun"
+    info "Runtime: Bun"
 else
-    curl -fsSL https://bun.sh/install | bash
-    # Make bun available in this session
-    export BUN_INSTALL="\$HOME/.bun"
-    export PATH="\$BUN_INSTALL/bin:\$PATH"
-    echo "[remote] Bun installed: \$(bun --version)"
+    RUNTIME="node"
+    cfg_set "remote.runtime" "node"
+    warn "32-bit userland detected — Bun does not support this architecture."
+    warn "Runtime: Node.js 20 LTS will be used on the server instead."
+    warn "You still build locally with Bun. Only the server runtime differs."
 fi
 
-export BUN_INSTALL="\$HOME/.bun"
-export PATH="\$BUN_INSTALL/bin:\$PATH"
+echo ""
+info "Connecting to $SSH_ALIAS..."
 
-echo "[remote] Installing PM2…"
-if command -v pm2 &>/dev/null; then
-    echo "[remote] PM2 already installed: \$(pm2 --version)"
+if [[ "$RUNTIME" == "bun" ]]; then
+
+ssh "$SSH_ALIAS" /bin/bash << REMOTE
+set -euo pipefail
+
+echo "[remote] Creating directories..."
+mkdir -p "${DEPLOY_PATH}" "${DATA_PATH}"
+
+echo "[remote] Installing Bun..."
+if [[ -f "\$HOME/.bun/bin/bun" ]]; then
+    echo "[remote] Bun already installed: \$(\$HOME/.bun/bin/bun --version)"
 else
-    bun install -g pm2
+    curl -fsSL https://bun.sh/install | bash
+fi
+
+if ! "\$HOME/.bun/bin/bun" --version &>/dev/null; then
+    echo "[remote] ERROR: bun binary cannot execute. Check architecture."
+    exit 1
+fi
+echo "[remote] Bun version: \$(\$HOME/.bun/bin/bun --version)"
+
+echo "[remote] Installing PM2..."
+if command -v pm2 &>/dev/null; then
+    echo "[remote] PM2 already installed."
+else
+    "\$HOME/.bun/bin/bun" install -g pm2
     echo "[remote] PM2 installed."
 fi
 
-echo "[remote] Writing .env…"
-cat > "$DEPLOY_PATH/.env" << 'ENV'
-ADMIN_PASSWORD=$ADMIN_PW
-ORIGIN=$ORIGIN
-PORT=$PORT
-DATA_DIR=$DATA_PATH
-ENV
+echo "[remote] Writing .env..."
+cat > "${DEPLOY_PATH}/.env" << 'ENVEOF'
+ADMIN_PASSWORD=${ADMIN_PW}
+ORIGIN=${ORIGIN}
+PORT=${PORT}
+DATA_DIR=${DATA_PATH}
+ENVEOF
 
-echo "[remote] .env written to $DEPLOY_PATH/.env"
-echo ""
-echo "[remote] Bootstrap complete."
+echo "[remote] Bootstrap complete (Bun runtime)."
 REMOTE
 
+else
+
+ssh "$SSH_ALIAS" /bin/bash << REMOTE
+set -euo pipefail
+
+echo "[remote] Creating directories..."
+mkdir -p "${DEPLOY_PATH}" "${DATA_PATH}"
+
+echo "[remote] Installing Node.js 20 LTS via nvm..."
+export NVM_DIR="\$HOME/.nvm"
+if [[ -f "\$NVM_DIR/nvm.sh" ]]; then
+    source "\$NVM_DIR/nvm.sh"
+    echo "[remote] nvm already installed."
+else
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+    source "\$NVM_DIR/nvm.sh"
+    echo "[remote] nvm installed."
+fi
+
+if node --version 2>/dev/null | grep -q "v20"; then
+    echo "[remote] Node.js 20 already installed: \$(node --version)"
+else
+    nvm install 20
+    nvm alias default 20
+    echo "[remote] Node.js installed: \$(node --version)"
+fi
+
+echo "[remote] Installing PM2..."
+if command -v pm2 &>/dev/null; then
+    echo "[remote] PM2 already installed: \$(pm2 --version)"
+else
+    npm install -g pm2
+    echo "[remote] PM2 installed."
+fi
+
+echo "[remote] Writing .env..."
+cat > "${DEPLOY_PATH}/.env" << 'ENVEOF'
+ADMIN_PASSWORD=${ADMIN_PW}
+ORIGIN=${ORIGIN}
+PORT=${PORT}
+DATA_DIR=${DATA_PATH}
+ENVEOF
+
+echo "[remote] Bootstrap complete (Node.js runtime)."
+REMOTE
+
+fi
+
 echo ""
-success "Remote is ready."
+success "Remote is ready. Runtime: $RUNTIME"
 echo ""
 info "Next step: run 'bash scripts/deploy.sh' to build and deploy the app."
 echo ""

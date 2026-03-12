@@ -15,6 +15,9 @@ remote:
   # Persistent data directory — kept outside deploy_path so it
   # survives re-deployments. Houses worksheet.db and backups.
   data_path: /home/pi/kwt-data
+  # Auto-detected by setup.sh: "bun" (aarch64/x86_64) or "node" (armv7l).
+  # You can override manually if needed.
+  runtime: ""
 
 app:
   port: 3000
@@ -26,5 +29,5 @@ app:
 backup:
   # Automatically back up the SQLite database before each deploy.
   enabled: true
-  # Number of daily backup files to keep (older ones are deleted).
+  # Number of days of backup files to keep (older ones are deleted).
   keep_days: 7
