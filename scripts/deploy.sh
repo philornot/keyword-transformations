@@ -64,6 +64,8 @@ RUNTIME=$(cfg_get      "remote.runtime")
 BACKUP_ENABLED=$(cfg_get  "backup.enabled")
 BACKUP_KEEP_DAYS=$(cfg_get "backup.keep_days")
 ORIGIN=$(cfg_get       "app.origin")
+PORT=$(cfg_get         "app.port")
+ADMIN_PW=$(cfg_get     "app.admin_password")
 
 [[ -z "$SSH_ALIAS"   || "$SSH_ALIAS"   == "null" ]] && die "remote.ssh_alias not set. Run scripts/setup.sh."
 [[ -z "$DEPLOY_PATH" || "$DEPLOY_PATH" == "null" ]] && die "remote.deploy_path not set. Run scripts/setup.sh."
@@ -115,11 +117,14 @@ fi
 
 # ── Step 3: Rsync ─────────────────────────────────────────────────────────────
 
-RSYNC_OPTS=(-av --progress --delete)
+RSYNC_OPTS=(-av --progress --delete --ignore-missing-args)
 [[ "$DRY_RUN" == true ]] && RSYNC_OPTS+=(--dry-run)
 
 info "Syncing files to $SSH_ALIAS:$DEPLOY_PATH..."
 echo ""
+
+LOCKFILE="bun.lock"
+[[ -f "bun.lockb" ]] && LOCKFILE="bun.lockb"
 
 rsync "${RSYNC_OPTS[@]}" \
     --exclude='.env' \
@@ -128,7 +133,7 @@ rsync "${RSYNC_OPTS[@]}" \
     --exclude='data/' \
     build \
     package.json \
-    bun.lock \
+    "$LOCKFILE" \
     "$SSH_ALIAS:$DEPLOY_PATH/"
 
 echo ""
@@ -137,6 +142,20 @@ if [[ "$DRY_RUN" == true ]]; then
     warn "Dry run — nothing was changed on the remote."
     exit 0
 fi
+
+# ── Step 4: Update .env ───────────────────────────────────────────────────────
+
+info "Updating .env on remote..."
+ssh "$SSH_ALIAS" /bin/bash << REMOTE
+cat > "${DEPLOY_PATH}/.env" << 'ENVEOF'
+ADMIN_PASSWORD=${ADMIN_PW}
+ORIGIN=${ORIGIN}
+PORT=${PORT}
+DATA_DIR=${DATA_PATH}
+ENVEOF
+echo "[remote] .env updated (PORT=${PORT})."
+REMOTE
+echo ""
 
 # ── Step 4: Install deps + restart ───────────────────────────────────────────
 
