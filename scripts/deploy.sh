@@ -127,33 +127,33 @@ REMOTE
     echo ""
 fi
 
-# ── Step 3: Rsync ─────────────────────────────────────────────────────────────
-
-RSYNC_OPTS=(-a --stats --delete --ignore-missing-args)
-[[ "$DRY_RUN" == true ]] && RSYNC_OPTS+=(--dry-run)
-
-info "Syncing files to $SSH_ALIAS:$DEPLOY_PATH..."
-echo ""
+# ── Step 3: Transfer files ────────────────────────────────────────────────────
 
 LOCKFILE="bun.lock"
 [[ -f "bun.lockb" ]] && LOCKFILE="bun.lockb"
 
-rsync "${RSYNC_OPTS[@]}" \
-    --exclude='.env' \
-    --exclude='node_modules' \
-    --exclude='.git' \
-    --exclude='data/' \
-    build \
-    package.json \
-    "$LOCKFILE" \
-    "$SSH_ALIAS:$DEPLOY_PATH/"
-
-echo ""
-
 if [[ "$DRY_RUN" == true ]]; then
+    info "Dry run — skipping file transfer."
     warn "Dry run — nothing was changed on the remote."
     exit 0
 fi
+
+info "Transferring files to $SSH_ALIAS:$DEPLOY_PATH..."
+
+ssh "$SSH_ALIAS" "mkdir -p '${DEPLOY_PATH}'"
+
+tar czf - \
+    --exclude='.env' \
+    --exclude='node_modules' \
+    --exclude='.git' \
+    --exclude='data' \
+    build \
+    package.json \
+    "$LOCKFILE" \
+    | ssh "$SSH_ALIAS" "tar xzf - -C '${DEPLOY_PATH}'"
+
+success "Transfer complete."
+echo ""
 
 # ── Step 4: Update .env ───────────────────────────────────────────────────────
 

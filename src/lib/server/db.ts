@@ -24,7 +24,7 @@
 import {mkdirSync} from 'fs';
 import {join} from 'path';
 import type DatabaseConstructor from 'better-sqlite3';
-
+import { createRequire } from 'module';
 type Database = ReturnType<typeof DatabaseConstructor>;
 
 const DATA_DIR = process.env.DATA_DIR ?? join(process.cwd(), 'data');
@@ -42,11 +42,7 @@ function openDb(): Database {
 
     mkdirSync(DATA_DIR, {recursive: true});
 
-    // Dynamic require defers native binary loading to the first HTTP request.
-    // A top-level `import` would cause the binary to be loaded (and crash)
-    // when the SSR bundle is evaluated during `vite build` on Windows.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database = require('better-sqlite3') as typeof DatabaseConstructor;
+    const Database = createRequire(import.meta.url)('better-sqlite3') as typeof DatabaseConstructor;
 
     _db = new Database(join(DATA_DIR, 'worksheet.db'));
     _db.pragma('journal_mode = WAL');
